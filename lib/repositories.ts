@@ -54,6 +54,9 @@ export function logActivity(input: { userId?: number; actor: string; action: str
 export function listActivity(limit = 20): ActivityLog[] {
   return db.prepare(`SELECT id, actor, action, entity_type AS entityType, entity_id AS entityId, details, created_at AS createdAt FROM activity_log ORDER BY id DESC LIMIT ?`).all(limit) as unknown as ActivityLog[];
 }
+export function listProjectActivity(projectId: string): ActivityLog[] {
+  return db.prepare(`SELECT id, actor, action, entity_type AS entityType, entity_id AS entityId, details, created_at AS createdAt FROM activity_log WHERE entity_type = 'project' AND entity_id = ? ORDER BY id DESC`).all(projectId) as unknown as ActivityLog[];
+}
 export function listUsers(): UserAccess[] {
   return db.prepare(`SELECT id, name, email, role, active, created_at AS createdAt FROM users ORDER BY CASE role WHEN 'Director' THEN 0 WHEN 'Administrator' THEN 1 WHEN 'Project Manager' THEN 2 WHEN 'Foreman' THEN 3 ELSE 4 END, name`).all() as unknown as UserAccess[];
 }

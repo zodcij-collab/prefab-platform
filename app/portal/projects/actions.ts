@@ -50,8 +50,18 @@ export async function updateProjectAction(data: FormData) {
 
 export async function assignMemberAction(data: FormData) {
   const user=await projectManager(); const projectId=value(data,"projectId"); const employeeId=value(data,"employeeId"); const role=value(data,"projectRole"); const project=getProject(projectId); const employee=listEmployees().find((item)=>item.id===employeeId);
-  if(!project || !employee || !role || role.length>80 || (role.toLowerCase()==="project manager"&&project.managerEmployeeId!==employeeId)) throw new Error("Invalid member assignment."); runTransaction(()=>{assignProjectMember(projectId,employeeId,role);
+  const alreadyAssigned=project?listProjectMembers(projectId).some((member)=>member.id===employeeId):false;
+  if(!project || !employee || alreadyAssigned || !role || role.length>80 || (role.toLowerCase()==="project manager"&&project.managerEmployeeId!==employeeId)) throw new Error("Invalid member assignment."); runTransaction(()=>{assignProjectMember(projectId,employeeId,role);
   logActivity({userId:user.id,actor:user.name,action:"Assigned project member",entityType:"project",entityId:projectId,details:`${employee.name} · ${role}`});}); revalidatePath(`/portal/projects/${projectId}`);
+}
+
+export async function updateMemberRoleAction(data: FormData) {
+  const user=await projectManager(); const projectId=value(data,"projectId"); const employeeId=value(data,"employeeId"); const role=limited(data,"projectRole",80); const project=getProject(projectId); const member=listProjectMembers(projectId).find((item)=>item.id===employeeId);
+  if(!project||!member||!role) throw new Error("Invalid project member role update.");
+  if(project.managerEmployeeId===employeeId&&role!=="Project manager") throw new Error("The responsible project manager role can only be changed through project editing.");
+  if(project.managerEmployeeId!==employeeId&&role.toLowerCase()==="project manager") throw new Error("Assign this employee as responsible manager through project editing first.");
+  runTransaction(()=>{assignProjectMember(projectId,employeeId,role);logActivity({userId:user.id,actor:user.name,action:"Updated project member role",entityType:"project",entityId:projectId,details:`${member.name} · ${member.projectRole} → ${role}`});});
+  revalidatePath(`/portal/projects/${projectId}`);
 }
 
 export async function removeMemberAction(data: FormData) {
