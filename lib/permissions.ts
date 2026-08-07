@@ -19,3 +19,11 @@ export function hasRole(user: SessionUser, minimum: Role) {
 export function canManageAccess(user: SessionUser) {
   return user.role === "Director" || user.role === "Administrator";
 }
+
+export function canManageProjects(user: SessionUser) {
+  return hasRole(user, "Project Manager");
+}
+
+export function canManageProjectOperations(user: SessionUser) {
+  return hasRole(user, "Foreman");
+}

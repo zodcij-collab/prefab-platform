@@ -1,6 +1,6 @@
 import { db } from "./db";
 
-export type Project = { id: string; name: string; location: string; client: string; status: string; progress: number; peopleToday: number; nextDelivery: string; manager: string };
+export type Project = { id: string; name: string; location: string; client: string; status: string; progress: number; peopleToday: number; nextDelivery: string; manager: string; managerEmployeeId: string | null; startDate: string; targetDate: string; description: string };
 export type Employee = { id: string; name: string; role: string; project: string; phone: string; status: string; certificates: string[] };
 export type DocumentRow = { id: string; name: string; category: string; project: string; revision: string; updated: string; status: string };
 export type DailyReport = { id: number; projectId: string; project: string; date: string; people: number; work: string; deliveries: number; issues: number; weather: string; notes: string; author: string };
@@ -8,15 +8,29 @@ export type ProjectEvent = { id: number; projectId: string; date: string; time: 
 export type ActivityLog = { id: number; actor: string; action: string; entityType: string; entityId: string; details: string; createdAt: string };
 export type UserAccess = { id: number; name: string; email: string; role: string; active: number; createdAt: string };
 export type Delivery = { id: number; projectId: string; deliveryDate: string; deliveryTime: string; supplier: string; loadRef: string; description: string; status: string; notes: string };
-export type ProjectIssue = { id: number; projectId: string; createdDate: string; category: string; title: string; priority: string; status: string; owner: string; details: string };
+export type ProjectIssue = { id: number; projectId: string; createdDate: string; category: string; title: string; priority: string; status: string; owner: string; ownerEmployeeId: string | null; details: string };
 export type ProjectPhoto = { id: number; projectId: string; photoDate: string; area: string; caption: string; fileRef: string; author: string };
+export type ProjectMember = Employee & { projectRole: string; assignedAt: string };
 
-const projectSelect = `SELECT id, name, location, client, status, progress, people_today AS peopleToday, next_delivery AS nextDelivery, manager FROM projects`;
+const projectSelect = `SELECT id, name, location, client, status, progress, people_today AS peopleToday, next_delivery AS nextDelivery, manager, manager_employee_id AS managerEmployeeId, start_date AS startDate, target_date AS targetDate, description FROM projects`;
 
 export function listProjects(): Project[] { return db.prepare(`${projectSelect} ORDER BY CASE status WHEN 'Active' THEN 0 WHEN 'Planning' THEN 1 ELSE 2 END, name`).all() as unknown as Project[]; }
 export function getProject(id: string): Project | undefined { return db.prepare(`${projectSelect} WHERE id = ?`).get(id) as Project | undefined; }
+export function getProjectByName(name: string): Project | undefined { return db.prepare(`${projectSelect} WHERE name = ? COLLATE NOCASE`).get(name) as Project | undefined; }
+export function createProject(input: Pick<Project, "id" | "name" | "location" | "client" | "status" | "manager" | "managerEmployeeId" | "startDate" | "targetDate" | "description">) {
+  return db.prepare(`INSERT INTO projects (id,name,location,client,status,manager,manager_employee_id,start_date,target_date,description) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(input.id,input.name,input.location,input.client,input.status,input.manager,input.managerEmployeeId,input.startDate,input.targetDate,input.description);
+}
+export function updateProject(id: string, previousName: string, input: Pick<Project, "name" | "location" | "client" | "status" | "manager" | "managerEmployeeId" | "startDate" | "targetDate" | "description">) {
+  const result=db.prepare(`UPDATE projects SET name=?,location=?,client=?,status=?,manager=?,manager_employee_id=?,start_date=?,target_date=?,description=? WHERE id=?`).run(input.name,input.location,input.client,input.status,input.manager,input.managerEmployeeId,input.startDate,input.targetDate,input.description,id);
+  if (previousName !== input.name) {
+    db.prepare("UPDATE reports SET project_name=? WHERE project_id=?").run(input.name,id);
+    db.prepare("UPDATE documents SET project=? WHERE project=?").run(input.name,previousName);
+    db.prepare("UPDATE employees SET project=? WHERE project=?").run(input.name,previousName);
+  }
+  return result;
+}
 export function listEmployees(): Employee[] {
-  const rows = db.prepare("SELECT id, name, role, project, phone, status, certificates FROM employees ORDER BY name").all() as unknown as (Omit<Employee,"certificates"> & { certificates: string })[];
+  const rows = db.prepare(`SELECT e.id,e.name,e.role,COALESCE((SELECT GROUP_CONCAT(p.name, ', ') FROM project_members m JOIN projects p ON p.id=m.project_id WHERE m.employee_id=e.id),'—') AS project,e.phone,e.status,e.certificates FROM employees e ORDER BY e.name`).all() as unknown as (Omit<Employee,"certificates"> & { certificates: string })[];
   return rows.map((r) => ({ ...r, certificates: JSON.parse(r.certificates) as string[] }));
 }
 export function listDocuments(): DocumentRow[] { return db.prepare("SELECT id, name, category, project, revision, updated, status FROM documents ORDER BY updated DESC").all() as unknown as DocumentRow[]; }
@@ -48,8 +62,27 @@ export function listDeliveries(projectId: string): Delivery[] {
   return db.prepare(`SELECT id, project_id AS projectId, delivery_date AS deliveryDate, delivery_time AS deliveryTime, supplier, load_ref AS loadRef, description, status, notes FROM deliveries WHERE project_id = ? ORDER BY delivery_date DESC, delivery_time DESC, id DESC`).all(projectId) as unknown as Delivery[];
 }
 export function listProjectIssues(projectId: string): ProjectIssue[] {
-  return db.prepare(`SELECT id, project_id AS projectId, created_date AS createdDate, category, title, priority, status, owner, details FROM project_issues WHERE project_id = ? ORDER BY CASE status WHEN 'Open' THEN 0 WHEN 'In progress' THEN 1 ELSE 2 END, id DESC`).all(projectId) as unknown as ProjectIssue[];
+  return db.prepare(`SELECT id, project_id AS projectId, created_date AS createdDate, category, title, priority, status, owner, owner_employee_id AS ownerEmployeeId, details FROM project_issues WHERE project_id = ? ORDER BY CASE status WHEN 'Open' THEN 0 WHEN 'In progress' THEN 1 ELSE 2 END, id DESC`).all(projectId) as unknown as ProjectIssue[];
 }
 export function listProjectPhotos(projectId: string): ProjectPhoto[] {
   return db.prepare(`SELECT id, project_id AS projectId, photo_date AS photoDate, area, caption, file_ref AS fileRef, author FROM project_photos WHERE project_id = ? ORDER BY photo_date DESC, id DESC`).all(projectId) as unknown as ProjectPhoto[];
+}
+export function listProjectMembers(projectId: string): ProjectMember[] {
+  const rows = db.prepare(`SELECT e.id,e.name,e.role,e.project,e.phone,e.status,e.certificates,m.project_role AS projectRole,m.assigned_at AS assignedAt FROM project_members m JOIN employees e ON e.id=m.employee_id WHERE m.project_id=? ORDER BY CASE m.project_role WHEN 'Project manager' THEN 0 WHEN 'Site lead' THEN 1 ELSE 2 END,e.name`).all(projectId) as unknown as (Omit<ProjectMember,"certificates"> & {certificates:string})[];
+  return rows.map((row) => ({...row, certificates: JSON.parse(row.certificates) as string[]}));
+}
+export function assignProjectMember(projectId: string, employeeId: string, projectRole: string) { return db.prepare(`INSERT INTO project_members (project_id,employee_id,project_role) VALUES (?,?,?) ON CONFLICT(project_id,employee_id) DO UPDATE SET project_role=excluded.project_role`).run(projectId,employeeId,projectRole); }
+export function removeProjectMember(projectId: string, employeeId: string) { return db.prepare(`DELETE FROM project_members WHERE project_id=? AND employee_id=?`).run(projectId,employeeId); }
+export function unassignProjectIssues(projectId: string, employeeId: string) { return db.prepare(`UPDATE project_issues SET owner='',owner_employee_id=NULL WHERE project_id=? AND owner_employee_id=?`).run(projectId,employeeId); }
+export function getDelivery(id: number): Delivery | undefined { return db.prepare(`SELECT id,project_id AS projectId,delivery_date AS deliveryDate,delivery_time AS deliveryTime,supplier,load_ref AS loadRef,description,status,notes FROM deliveries WHERE id=?`).get(id) as Delivery | undefined; }
+export function saveDelivery(input: Omit<Delivery,"id"> & {id?:number}) { return input.id ? db.prepare(`UPDATE deliveries SET delivery_date=?,delivery_time=?,supplier=?,load_ref=?,description=?,status=?,notes=? WHERE id=? AND project_id=?`).run(input.deliveryDate,input.deliveryTime,input.supplier,input.loadRef,input.description,input.status,input.notes,input.id,input.projectId) : db.prepare(`INSERT INTO deliveries (project_id,delivery_date,delivery_time,supplier,load_ref,description,status,notes) VALUES (?,?,?,?,?,?,?,?)`).run(input.projectId,input.deliveryDate,input.deliveryTime,input.supplier,input.loadRef,input.description,input.status,input.notes); }
+export function deleteDelivery(id: number, projectId: string) { return db.prepare(`DELETE FROM deliveries WHERE id=? AND project_id=?`).run(id,projectId); }
+export function getProjectIssue(id: number): ProjectIssue | undefined { return db.prepare(`SELECT id,project_id AS projectId,created_date AS createdDate,category,title,priority,status,owner,owner_employee_id AS ownerEmployeeId,details FROM project_issues WHERE id=?`).get(id) as ProjectIssue | undefined; }
+export function saveProjectIssue(input: Omit<ProjectIssue,"id"> & {id?:number}) { return input.id ? db.prepare(`UPDATE project_issues SET created_date=?,category=?,title=?,priority=?,status=?,owner=?,owner_employee_id=?,details=? WHERE id=? AND project_id=?`).run(input.createdDate,input.category,input.title,input.priority,input.status,input.owner,input.ownerEmployeeId,input.details,input.id,input.projectId) : db.prepare(`INSERT INTO project_issues (project_id,created_date,category,title,priority,status,owner,owner_employee_id,details) VALUES (?,?,?,?,?,?,?,?,?)`).run(input.projectId,input.createdDate,input.category,input.title,input.priority,input.status,input.owner,input.ownerEmployeeId,input.details); }
+export function deleteProjectIssue(id: number, projectId: string) { return db.prepare(`DELETE FROM project_issues WHERE id=? AND project_id=?`).run(id,projectId); }
+
+export function runTransaction<T>(work: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try { const result=work(); db.exec("COMMIT"); return result; }
+  catch (error) { db.exec("ROLLBACK"); throw error; }
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0-alpha.1 — Sprint 7
+- Added create and edit workflows for projects.
+- Added project schedule, status, manager and notes fields.
+- Added normalized project membership with project-specific roles.
+- Added editable delivery and issue workflows with assignment and status control.
+- Added permission-aware project management actions and activity logging.
+
 ## 0.6.0-alpha.1 — Sprint 6
 - Added deliveries register to Project Hub.
 - Added project issues / defects register.

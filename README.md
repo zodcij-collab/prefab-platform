@@ -1,6 +1,6 @@
 # PREFAB.LV Corporate Platform
 
-Sprint 2 release: `v0.2.0-alpha.1`
+Sprint 7 release: `v0.7.0-alpha.1`
 
 ## Run locally
 
@@ -11,7 +11,7 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Portal preview: `http://localhost:3000/portal`.
+Authenticated portal: `http://localhost:3000/portal`.
 
 ## Quality checks
 
@@ -31,7 +31,7 @@ npm run build
 - `docs/` — sprint and technical documentation
 - `public/` — production-ready public assets
 
-## Sprint 4 login
+## Local login
 
 The first local start creates `data/prefab.db` automatically.
 

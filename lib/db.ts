@@ -23,7 +23,17 @@ CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT,project
 CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,delivery_date TEXT NOT NULL,delivery_time TEXT NOT NULL DEFAULT '',supplier TEXT NOT NULL,load_ref TEXT NOT NULL DEFAULT '',description TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'Planned',notes TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id));
 CREATE TABLE IF NOT EXISTS project_issues (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,created_date TEXT NOT NULL,category TEXT NOT NULL,title TEXT NOT NULL,priority TEXT NOT NULL DEFAULT 'Normal',status TEXT NOT NULL DEFAULT 'Open',owner TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id));
 CREATE TABLE IF NOT EXISTS project_photos (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,photo_date TEXT NOT NULL,area TEXT NOT NULL DEFAULT '',caption TEXT NOT NULL,file_ref TEXT NOT NULL DEFAULT '',author TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id));
+CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL,employee_id TEXT NOT NULL,project_role TEXT NOT NULL DEFAULT 'Team member',assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(project_id, employee_id),FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 `);
+
+const projectColumns = new Set((db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((column) => column.name));
+if (!projectColumns.has("start_date")) db.exec("ALTER TABLE projects ADD COLUMN start_date TEXT NOT NULL DEFAULT ''");
+if (!projectColumns.has("target_date")) db.exec("ALTER TABLE projects ADD COLUMN target_date TEXT NOT NULL DEFAULT ''");
+if (!projectColumns.has("description")) db.exec("ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+if (!projectColumns.has("manager_employee_id")) db.exec("ALTER TABLE projects ADD COLUMN manager_employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
+const issueColumns = new Set((db.prepare("PRAGMA table_info(project_issues)").all() as { name: string }[]).map((column) => column.name));
+if (!issueColumns.has("owner_employee_id")) db.exec("ALTER TABLE project_issues ADD COLUMN owner_employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
 
 function count(table: string) { return Number((db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c); }
 
@@ -34,7 +44,7 @@ if (count("users") === 0) {
 }
 if (count("projects") === 0) {
   const rows = [["riga-north","Riga North Residential","Rīga, LV","Nordic Development","Active",64,12,"Today · 10:30","Edvards K."],["marupe-logistics","Mārupe Logistics Hub","Mārupe, LV","Baltic Logistics","Active",38,9,"Tomorrow · 08:00","Jānis B."],["tallinn-office","Tallinn Office Campus","Tallinn, EE","Northline Property","Planning",8,0,"18 Aug · TBD","Edvards K."],["kaunas-retail","Kaunas Retail Extension","Kaunas, LT","Retail Baltic","Completed",100,0,"—","Mārtiņš S."]];
-  const stmt = db.prepare("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
+  const stmt = db.prepare("INSERT INTO projects (id,name,location,client,status,progress,people_today,next_delivery,manager) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
 if (count("employees") === 0) {
   const rows = [["emp-001","Jānis Bērziņš","Foreman","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","First aid"])],["emp-002","Mārtiņš Ozols","Precast installer","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Work at height"])],["emp-003","Artūrs Liepa","Welder","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["EN ISO 9606-1"])],["emp-004","Kārlis Kalniņš","Rigger","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","Signalman"])],["emp-005","Laura Priede","Project coordinator","Tallinn Office Campus","+371 2X XXX XXX","Office","[]"],["emp-006","Andris Krūmiņš","Concrete worker","Riga North Residential","+371 2X XXX XXX","Off",JSON.stringify(["Work at height"])]];
@@ -65,4 +75,12 @@ if (count("project_issues") === 0) {
 if (count("project_photos") === 0) {
   const rows = [["riga-north","2026-08-07","Axis B","Wall panels installed and temporarily braced","photos/riga-north/2026-08-07-axis-b.jpg","Jānis B."],["riga-north","2026-08-07","Delivery zone","LOAD-017 received","photos/riga-north/2026-08-07-load-017.jpg","Jānis B."],["marupe-logistics","2026-08-07","Level 02","Hollow-core erection started","photos/marupe/2026-08-07-level-02.jpg","Mārtiņš S."]];
   const stmt = db.prepare("INSERT INTO project_photos (project_id, photo_date, area, caption, file_ref, author) VALUES (?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
+}
+
+const membershipMigration = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint7_project_members");
+if (!membershipMigration) {
+  db.exec(`INSERT OR IGNORE INTO project_members (project_id, employee_id, project_role)
+    SELECT p.id, e.id, CASE WHEN e.role = 'Foreman' THEN 'Site lead' ELSE e.role END
+    FROM employees e JOIN projects p ON p.name = e.project`);
+  db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run("sprint7_project_members");
 }
