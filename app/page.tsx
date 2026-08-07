@@ -7,6 +7,7 @@ import { WhyPrecast } from "@/components/sections/WhyPrecast";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { company } from "@/data/site";
 
 export default function HomePage() {
   return (
@@ -65,6 +66,7 @@ export default function HomePage() {
           <Container className="contact-grid">
             <div>
               <SectionHeading eyebrow="KONTAKTI" title="Sāksim ar sarunu par jūsu projektu." description="Nosūtiet īsu informāciju par objektu, darbu apjomu un plānoto sākumu." />
+              <p className="contact-direct"><a href={`mailto:${company.email}`}>{company.email}</a><br/><a href={company.website} target="_blank" rel="noreferrer">www.prefab.lv</a></p>
             </div>
             <form className="contact-form">
               <label>Vārds un uzņēmums<input name="name" type="text" placeholder="Jūsu vārds" /></label>

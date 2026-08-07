@@ -3,6 +3,10 @@ node_modules
 out
 .env
 .env.local
+
+# Local uploaded documents and photos
+storage/uploads/
+!storage/.gitkeep
 *.log
 .DS_Store
 coverage

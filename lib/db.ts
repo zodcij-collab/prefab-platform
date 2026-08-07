@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS project_issues (id INTEGER PRIMARY KEY AUTOINCREMENT,
 CREATE TABLE IF NOT EXISTS project_photos (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,photo_date TEXT NOT NULL,area TEXT NOT NULL DEFAULT '',caption TEXT NOT NULL,file_ref TEXT NOT NULL DEFAULT '',author TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id));
 CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL,employee_id TEXT NOT NULL,project_role TEXT NOT NULL DEFAULT 'Team member',assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(project_id, employee_id),FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS project_documents (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,title TEXT NOT NULL,category TEXT NOT NULL,revision TEXT NOT NULL DEFAULT '',document_date TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'Current',description TEXT NOT NULL DEFAULT '',original_filename TEXT NOT NULL,stored_path TEXT NOT NULL UNIQUE,file_size INTEGER NOT NULL,mime_type TEXT NOT NULL,uploaded_by_id INTEGER,uploaded_by TEXT NOT NULL,uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,FOREIGN KEY(uploaded_by_id) REFERENCES users(id) ON DELETE SET NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_nocase ON users(email COLLATE NOCASE);
 `);
 
 const projectColumns = new Set((db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((column) => column.name));
@@ -34,6 +36,14 @@ if (!projectColumns.has("description")) db.exec("ALTER TABLE projects ADD COLUMN
 if (!projectColumns.has("manager_employee_id")) db.exec("ALTER TABLE projects ADD COLUMN manager_employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
 const issueColumns = new Set((db.prepare("PRAGMA table_info(project_issues)").all() as { name: string }[]).map((column) => column.name));
 if (!issueColumns.has("owner_employee_id")) db.exec("ALTER TABLE project_issues ADD COLUMN owner_employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
+const photoColumns = new Set((db.prepare("PRAGMA table_info(project_photos)").all() as { name: string }[]).map((column) => column.name));
+if (!photoColumns.has("notes")) db.exec("ALTER TABLE project_photos ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+if (!photoColumns.has("original_filename")) db.exec("ALTER TABLE project_photos ADD COLUMN original_filename TEXT NOT NULL DEFAULT ''");
+if (!photoColumns.has("stored_path")) db.exec("ALTER TABLE project_photos ADD COLUMN stored_path TEXT NOT NULL DEFAULT ''");
+if (!photoColumns.has("file_size")) db.exec("ALTER TABLE project_photos ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0");
+if (!photoColumns.has("mime_type")) db.exec("ALTER TABLE project_photos ADD COLUMN mime_type TEXT NOT NULL DEFAULT ''");
+if (!photoColumns.has("uploaded_by_id")) db.exec("ALTER TABLE project_photos ADD COLUMN uploaded_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+if (!photoColumns.has("uploaded_at")) db.exec("ALTER TABLE project_photos ADD COLUMN uploaded_at TEXT NOT NULL DEFAULT ''");
 
 function count(table: string) { return Number((db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c); }
 

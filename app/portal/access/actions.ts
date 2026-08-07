@@ -1,0 +1,20 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireUser } from "../../../lib/auth";
+import { canManageAccess,ROLES,type Role } from "../../../lib/permissions";
+import { createUserAccess,getUserAccess,getUserAccessByEmail,logActivity,runTransaction,updateUserAccess } from "../../../lib/repositories";
+import { hashPassword } from "../../../lib/security";
+
+export type UserFormState={error:string;success:string};
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const value=(data:FormData,key:string)=>String(data.get(key)??"").trim();
+
+async function accessManager(){const user=await requireUser();if(!canManageAccess(user))throw new Error("You do not have permission to manage users.");return user;}
+function commonInput(data:FormData){const name=value(data,"name");const email=value(data,"email").toLowerCase();const role=value(data,"role") as Role;const status=value(data,"status");if(!name||name.length>120)throw new Error("Name is required and must be 120 characters or fewer.");if(!EMAIL.test(email)||email.length>254)throw new Error("Enter a valid email address.");if(!ROLES.includes(role))throw new Error("Select a valid role.");if(!["Active","Inactive"].includes(status))throw new Error("Select a valid status.");return{name,email,role,active:status==="Active"?1:0};}
+function validatePassword(password:string,confirmation:string){if(password!==confirmation)throw new Error("Passwords do not match.");if(password.length<12)throw new Error("Password must be at least 12 characters.");const classes=[/[a-z]/,/[A-Z]/,/\d/,/[^A-Za-z0-9]/].filter((pattern)=>pattern.test(password)).length;if(classes<3)throw new Error("Password must include at least three of: lowercase, uppercase, number, and symbol.");}
+function message(error:unknown){return error instanceof Error?error.message:"Unable to save user.";}
+
+export async function createUserAction(_state:UserFormState,data:FormData):Promise<UserFormState>{const actor=await accessManager();try{const input=commonInput(data);const password=String(data.get("password")??"");validatePassword(password,String(data.get("confirmPassword")??""));runTransaction(()=>{if(getUserAccessByEmail(input.email))throw new Error("A user with this email already exists.");const result=createUserAccess({...input,passwordHash:hashPassword(password)});logActivity({userId:actor.id,actor:actor.name,action:"Created user",entityType:"user",entityId:String(result.lastInsertRowid),details:`${input.name} · ${input.role} · ${input.active?"Active":"Inactive"}`});});revalidatePath("/portal/access");return{error:"",success:`${input.name} was created.`};}catch(error){return{error:message(error),success:""};}}
+
+export async function updateUserAction(_state:UserFormState,data:FormData):Promise<UserFormState>{const actor=await accessManager();try{const id=Number(value(data,"id"));if(!Number.isInteger(id)||id<1)throw new Error("Invalid user.");const existing=getUserAccess(id);if(!existing)throw new Error("User not found.");const input=commonInput(data);if(id===actor.id&&!input.active)throw new Error("You cannot deactivate your own currently authenticated account.");runTransaction(()=>{const duplicate=getUserAccessByEmail(input.email);if(duplicate&&duplicate.id!==id)throw new Error("A user with this email already exists.");updateUserAccess(id,input);const changes:string[]=[];if(existing.name!==input.name)changes.push(`${existing.name} → ${input.name}`);if(existing.email.toLowerCase()!==input.email)changes.push(`${existing.email} → ${input.email}`);if(existing.role!==input.role)changes.push(`Role: ${existing.role} → ${input.role}`);if(Boolean(existing.active)!==Boolean(input.active))changes.push(`Status: ${existing.active?"Active":"Inactive"} → ${input.active?"Active":"Inactive"}`);if(changes.length)logActivity({userId:actor.id,actor:actor.name,action:"Updated user",entityType:"user",entityId:String(id),details:changes.join(" · ")});});revalidatePath("/portal/access");return{error:"",success:`${input.name} was updated.`};}catch(error){return{error:message(error),success:""};}}

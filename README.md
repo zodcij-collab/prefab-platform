@@ -1,6 +1,6 @@
 # PREFAB.LV Corporate Platform
 
-Sprint 7 release: `v0.7.0-alpha.1`
+Sprint 8 release: `v0.8.0`
 
 ## Run locally
 

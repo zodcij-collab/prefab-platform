@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — Sprint 8
+- Added secure local project-document upload, revision and download management.
+- Added project site-photo upload and gallery.
+- Added project-scoped document and photo activity logging.
+- Added a searchable/filterable document register with legacy-data compatibility.
+- Updated public PREFAB.LV contact and configurable social links.
+- Added centralized 25 MB upload limits, destructive-action confirmations and Europe/Riga timestamp presentation.
+- Added the portal account menu, secure user administration and final role-permission corrections.
+- Manual acceptance completed with 15/15 tests passing.
+
 ## 0.7.0-alpha.1 — Sprint 7
 - Added create and edit workflows for projects.
 - Added project schedule, status, manager and notes fields.

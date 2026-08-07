@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { logoutAction } from "../../app/portal/actions";
+import { AccountMenu } from "./AccountMenu";
 
 const nav = [
   ["/portal", "Dashboard", "DB"],
@@ -27,7 +27,6 @@ export function PortalShell({ children, active }: { children: ReactNode; active:
         <div className="os-sidebar-footer">
           <span className="os-status-dot" /> System online
           <Link href="/">← Public website</Link>
-          <form action={logoutAction}><button className="os-logout" type="submit">Sign out</button></form>
         </div>
       </aside>
       <section className="os-main">{children}</section>
@@ -39,7 +38,7 @@ export function PortalTopbar({ eyebrow, title, action }: { eyebrow: string; titl
   return (
     <header className="os-topbar">
       <div><p>{eyebrow}</p><h1>{title}</h1></div>
-      <div className="os-topbar-actions">{action}<span className="os-avatar">EK</span></div>
+      <div className="os-topbar-actions">{action}<AccountMenu/></div>
     </header>
   );
 }

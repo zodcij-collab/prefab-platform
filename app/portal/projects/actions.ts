@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../../../lib/auth";
 import { canManageProjectOperations, canManageProjects } from "../../../lib/permissions";
 import { assignProjectMember, createProject, deleteDelivery, deleteProjectIssue, getDelivery, getProject, getProjectByName, getProjectIssue, listEmployees, listProjectMembers, logActivity, removeProjectMember, runTransaction, saveDelivery, saveProjectIssue, unassignProjectIssues, updateProject } from "../../../lib/repositories";
+import { appToday } from "../../../lib/datetime";
 
 const PROJECT_STATUSES = ["Planning", "Active", "On hold", "Completed"];
 const DELIVERY_STATUSES = ["Planned", "Confirmed", "Received", "Cancelled"];
@@ -81,7 +82,7 @@ export async function deleteDeliveryAction(data: FormData) {
 
 export async function saveIssueAction(data: FormData) {
   const user=await operationsUser(); const projectId=value(data,"projectId"); const id=positiveId(data,"id"); const status=value(data,"status"); const priority=value(data,"priority"); if(!getProject(projectId)||!ISSUE_STATUSES.includes(status)||!ISSUE_PRIORITIES.includes(priority)) throw new Error("Invalid issue."); if(id&&getProjectIssue(id)?.projectId!==projectId) throw new Error("Issue not found.");
-  const ownerEmployeeId=value(data,"ownerEmployeeId")||null; const owner=ownerEmployeeId?listProjectMembers(projectId).find((member)=>member.id===ownerEmployeeId):undefined; if(ownerEmployeeId&&!owner) throw new Error("Responsible employee must be a project member."); const input={id,projectId,createdDate:value(data,"createdDate")||new Date().toISOString().slice(0,10),category:limited(data,"category",100),title:limited(data,"title",240),priority,status,owner:owner?.name??"",ownerEmployeeId,details:limited(data,"details",3000)}; if(!input.category||!input.title) throw new Error("Issue category and title are required."); runTransaction(()=>{saveProjectIssue(input);
+  const ownerEmployeeId=value(data,"ownerEmployeeId")||null; const owner=ownerEmployeeId?listProjectMembers(projectId).find((member)=>member.id===ownerEmployeeId):undefined; if(ownerEmployeeId&&!owner) throw new Error("Responsible employee must be a project member."); const input={id,projectId,createdDate:value(data,"createdDate")||appToday(),category:limited(data,"category",100),title:limited(data,"title",240),priority,status,owner:owner?.name??"",ownerEmployeeId,details:limited(data,"details",3000)}; if(!input.category||!input.title) throw new Error("Issue category and title are required."); runTransaction(()=>{saveProjectIssue(input);
   logActivity({userId:user.id,actor:user.name,action:id?`Updated issue · ${status}`:"Created issue",entityType:"project",entityId:projectId,details:input.title});}); revalidatePath(`/portal/projects/${projectId}`);
 }
 
