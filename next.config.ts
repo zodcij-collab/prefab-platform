@@ -4,6 +4,7 @@ import { SERVER_ACTION_BODY_SIZE_LIMIT } from "./lib/upload-config";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  devIndicators: false,
   allowedDevOrigins: ["192.168.8.220"],
   experimental: {
     serverActions: { bodySizeLimit: SERVER_ACTION_BODY_SIZE_LIMIT },

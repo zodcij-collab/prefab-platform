@@ -1,84 +1,26 @@
+import Link from "next/link";
+import { ContactForm } from "@/components/ContactForm";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { Hero } from "@/components/sections/Hero";
-import { PortalPreview } from "@/components/sections/PortalPreview";
-import { Services } from "@/components/sections/Services";
-import { WhyPrecast } from "@/components/sections/WhyPrecast";
+import { PublicLanguageAttribute } from "@/components/PublicLanguageAttribute";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { company } from "@/data/site";
+import { publicCopy,publicLanguage,publicProjects } from "@/data/public-site";
+import { company,whatsappNumber } from "@/data/site";
 
-export default function HomePage() {
-  return (
-    <>
-      <Header />
-      <main id="top">
-        <Hero />
-
-        <section className="metrics" aria-label="Uzņēmuma galvenie rādītāji">
-          <Container className="metrics-grid">
-            <div><strong>20+</strong><span>gadu pieredze būvniecībā</span></div>
-            <div><strong>50+</strong><span>liela mēroga projekti</span></div>
-            <div><strong>EU</strong><span>pieredze Eiropas tirgū</span></div>
-            <div><strong>360°</strong><span>process no plāna līdz montāžai</span></div>
-          </Container>
-        </section>
-
-        <section className="section company-section" id="company">
-          <Container className="split-grid">
-            <SectionHeading eyebrow="PAR PREFAB.LV" title="Kārtība procesā. Precizitāte montāžā." />
-            <div className="body-copy">
-              <p>PREFAB.LV organizē un veic saliekamo dzelzsbetona elementu montāžu, betonēšanas, metināšanas un stropēšanas darbus.</p>
-              <p>Mūsu darba pamatā ir skaidra montāžas secība, kvalificēta komanda, drošība un kontrolējams rezultāts.</p>
-              <a className="text-link" href="#services">Mūsu kompetences →</a>
-            </div>
-          </Container>
-        </section>
-
-        <Services />
-        <WhyPrecast />
-
-        <section className="section projects-section" id="projects">
-          <Container>
-            <SectionHeading eyebrow="PROJEKTI" title="Pieredze, kuru var pārbaudīt objektā." description="Reālie projektu materiāli tiks pievienoti, tiklīdz būs pabeigta foto arhīva atlase." />
-            <div className="project-grid">
-              <article className="project-card project-large"><span>DAUDZDZĪVOKĻU ĒKAS</span><strong>Saliekamā dzelzsbetona montāža</strong><small>Latvija · 2026</small></article>
-              <article className="project-card project-warm"><span>KOMERCOBJEKTI</span><strong>Konstrukcijas un betona darbi</strong><small>Baltija</small></article>
-              <article className="project-card project-dark"><span>EIROPAS PROJEKTI</span><strong>Komandas un montāžas vadība</strong><small>Ziemeļeiropa</small></article>
-            </div>
-          </Container>
-        </section>
-
-        <PortalPreview />
-
-        <section className="section dark" id="careers">
-          <Container className="split-grid align-center">
-            <SectionHeading eyebrow="KARJERA" title="Pievienojies komandai, kas prot būvēt." inverse />
-            <div className="body-copy light-copy">
-              <p>Meklējam betonētājus, galdniekus, stropētājus, metinātājus un saliekamo konstrukciju montāžas speciālistus.</p>
-              <ButtonLink href="#contact" variant="light">Pieteikties darbam</ButtonLink>
-            </div>
-          </Container>
-        </section>
-
-        <section className="section" id="contact">
-          <Container className="contact-grid">
-            <div>
-              <SectionHeading eyebrow="KONTAKTI" title="Sāksim ar sarunu par jūsu projektu." description="Nosūtiet īsu informāciju par objektu, darbu apjomu un plānoto sākumu." />
-              <p className="contact-direct"><a href={`mailto:${company.email}`}>{company.email}</a><br/><a href={company.website} target="_blank" rel="noreferrer">www.prefab.lv</a></p>
-            </div>
-            <form className="contact-form">
-              <label>Vārds un uzņēmums<input name="name" type="text" placeholder="Jūsu vārds" /></label>
-              <label>E-pasts<input name="email" type="email" placeholder="name@company.lv" /></label>
-              <label>Tālrunis<input name="phone" type="tel" placeholder="+371" /></label>
-              <label>Ziņa<textarea name="message" rows={4} placeholder="Īss projekta apraksts" /></label>
-              <button className="button button-primary" type="submit"><span>Nosūtīt pieprasījumu</span><span>↗</span></button>
-            </form>
-          </Container>
-        </section>
-      </main>
-      <Footer />
-    </>
-  );
-}
+export default async function HomePage({searchParams}:{searchParams:Promise<{lang?:string}>}){const language=publicLanguage((await searchParams).lang);const copy=publicCopy[language];return <>
+  <PublicLanguageAttribute language={language}/>
+  <Header language={language} copy={copy.nav}/><main id="top">
+    <section className="hero"><Container className="hero-grid"><div className="hero-copy reveal"><p className="eyebrow">{copy.hero.eyebrow}</p><h1>{copy.hero.title}</h1><p className="lead">{copy.hero.lead}</p><div className="hero-actions"><ButtonLink href="#contact">{copy.hero.offer}</ButtonLink><ButtonLink href="#projects" variant="secondary">{copy.hero.projects}</ButtonLink></div></div><div className="hero-stage reveal reveal-2" aria-label="PREFAB.LV"><div className="hero-grid-lines"/><div className="concrete-frame frame-a"/><div className="concrete-frame frame-b"/><div className="crane-line"/><div className="orange-slab"/><div className="hero-caption"><span>01</span><p>{copy.hero.caption}</p></div></div></Container></section>
+    <section className="metrics"><Container className="metrics-grid">{copy.metricValues.map((value,index)=><div key={value}><strong>{value}</strong><span>{copy.metrics[index]}</span></div>)}</Container></section>
+    <section className="section company-section" id="company"><Container className="split-grid"><SectionHeading eyebrow={copy.about.eyebrow} title={copy.about.title}/><div className="body-copy">{copy.about.paragraphs.map((paragraph)=><p key={paragraph}>{paragraph}</p>)}</div></Container></section>
+    <section className="section surface" id="approach"><Container><SectionHeading eyebrow={copy.approach.eyebrow} title={copy.approach.title} description={copy.approach.description}/><div className="approach-grid">{copy.approach.items.map(([title,text],index)=><article key={title}><span>0{index+1}</span><h3>{title}</h3><p>{text}</p></article>)}</div></Container></section>
+    <section className="section" id="services"><Container><SectionHeading eyebrow={copy.services.eyebrow} title={copy.services.title}/><div className="service-list">{copy.services.items.map(([title,text],index)=><article className="service-row" key={title}><span>0{index+1}</span><h3>{title}</h3><p>{text}</p><span className="service-arrow">↗</span></article>)}</div></Container></section>
+    <section className="section why-precast" id="why-precast"><Container><SectionHeading eyebrow={copy.why.eyebrow} title={copy.why.title} description={copy.why.description}/><div className="benefit-grid">{copy.why.items.map(([title,text],index)=><article className="benefit-card" key={title}><span>0{index+1}</span><h3>{title}</h3><p>{text}</p></article>)}</div></Container></section>
+    <section className="section projects-section" id="projects"><Container><SectionHeading eyebrow={copy.projects.eyebrow} title={copy.projects.title} description={copy.projects.description}/><div className="public-project-grid">{publicProjects[language].map((project,index)=><article className="public-project-card" key={project.id}><div className={`project-placeholder project-placeholder-${index+1}`}><span>{copy.projects.placeholder} · 0{index+1}</span></div><div className="public-project-copy"><p>{project.location} · {project.country} · {project.year}</p><h3>{project.title}</h3><strong>{copy.projects.scope}</strong><span>{project.scope}</span><p>{project.description}</p><small>{copy.projects.gallery}</small></div></article>)}</div></Container></section>
+    <section className="section portal-preview"><Container className="portal-preview-grid"><div><p className="eyebrow">{copy.portal.eyebrow}</p><h2>{copy.portal.title}</h2><p className="section-description">{copy.portal.description}</p><Link className="text-link" href="/login">{copy.portal.link} →</Link></div><div className="dashboard-mockup"><div className="dashboard-topbar"><span>PREFAB.LV</span><span>{copy.portal.link}</span></div><div className="dashboard-content"><p>{copy.portal.greeting}</p><div className="dashboard-stat-grid">{copy.portal.stats.map((label)=><article key={label}><strong>—</strong><span>{label}</span></article>)}</div></div></div></Container></section>
+    <section className="section dark" id="mission"><Container className="split-grid align-center"><SectionHeading eyebrow={copy.mission.eyebrow} title={copy.mission.title} inverse/><div className="body-copy light-copy"><p>{copy.mission.text}</p><ButtonLink href="#contact" variant="light">{copy.mission.cta}</ButtonLink></div></Container></section>
+    <section className="section" id="contact"><Container className="contact-grid"><div><SectionHeading eyebrow={copy.contact.eyebrow} title={copy.contact.title} description={copy.contact.description}/><p className="contact-direct"><a href={`mailto:${company.email}`}>{company.email}</a><br/><a href={company.website} target="_blank" rel="noopener noreferrer">www.prefab.lv</a></p>{whatsappNumber&&<a className="whatsapp-link" href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer">{copy.contact.whatsapp} ↗</a>}</div><ContactForm copy={copy.contact}/></Container></section>
+  </main><Footer language={language} copy={copy.footer}/>
+</>}

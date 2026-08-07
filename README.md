@@ -1,6 +1,6 @@
 # PREFAB.LV Corporate Platform
 
-Sprint 8 release: `v0.8.0`
+Sprint 9 development target: `v0.9.0`
 
 ## Run locally
 
@@ -41,3 +41,12 @@ Default local account:
 - Password: `ChangeMe2026!`
 
 To set another initial account, copy `.env.example` to `.env.local` **before the first start** and change the credentials. The local database file is intentionally ignored by Git.
+
+## Public website configuration
+
+- `APP_TIMEZONE` — IANA timezone, default `Europe/Riga`.
+- `NEXT_PUBLIC_LINKEDIN_URL`, `NEXT_PUBLIC_FACEBOOK_URL`, `NEXT_PUBLIC_INSTAGRAM_URL` — optional HTTPS social profiles.
+- `NEXT_PUBLIC_WHATSAPP_NUMBER` — optional digits-only international WhatsApp number; no action is rendered when omitted.
+- `CONTACT_WEBHOOK_URL` — optional server-only HTTPS endpoint for lead-form JSON delivery. Without it, the form clearly reports that online delivery is unavailable.
+
+See [docs/PRODUCTION-LAUNCH.md](docs/PRODUCTION-LAUNCH.md) for deployment requirements and the launch checklist.

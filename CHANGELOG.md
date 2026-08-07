@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — Sprint 9
+- Added maintainable Latvian, English and Russian public-site content with Latvian as default.
+- Added verified company positioning, approach and mission content without unsupported commercial claims.
+- Added fully localized LV/EN/RU three-card project showcase placeholders for future approved case studies.
+- Added responsive public navigation, stronger logo treatment and homepage layout polish.
+- Added validated lead form with consent, honeypot protection and honest configuration-dependent delivery states.
+- Added configurable WhatsApp and secure social-link handling.
+- Added launch documentation, crawler separation for portal routes and production checklist.
+
 ## 0.8.0 — Sprint 8
 - Added secure local project-document upload, revision and download management.
 - Added project site-photo upload and gallery.
