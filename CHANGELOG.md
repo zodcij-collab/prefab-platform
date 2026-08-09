@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.9.0 — Sprint 9
+- Added the database-backed portal workspace foundation with centralized LV/EN/RU navigation and operational module localization.
+- Refined live portal dashboard metrics, responsive language controls and project schedule visibility without changing authentication or permissions.
 - Added maintainable Latvian, English and Russian public-site content with Latvian as default.
 - Added verified company positioning, approach and mission content without unsupported commercial claims.
 - Added fully localized LV/EN/RU three-card project showcase placeholders for future approved case studies.

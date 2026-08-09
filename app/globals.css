@@ -250,6 +250,9 @@ h3 { font-weight: 760; }
 .os-nav-code { color: #68716b; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
 .os-nav a.active .os-nav-code { color: var(--orange); }
 .os-sidebar-footer { margin-top: auto; display: grid; gap: 15px; padding: 20px 12px 0; border-top: 1px solid #29302c; color: #7f8982; font-size: 11px; }
+.os-language-switcher { display:flex; gap:4px; }
+.os-language-switcher button { min-width:30px; min-height:30px; border:1px solid #343c37; background:transparent; color:#8d9790; cursor:pointer; font-size:10px; font-weight:900; }
+.os-language-switcher button.active { border-color:var(--orange); color:var(--orange); }
 .os-status-dot { width: 7px; height: 7px; display: inline-block; margin-right: 7px; border-radius: 50%; background: #60a96c; }
 .os-main { min-width: 0; padding: 40px clamp(24px,4vw,58px) 70px; }
 .os-topbar { min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 32px; }
@@ -364,11 +367,14 @@ h3 { font-weight: 760; }
 .os-form-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; padding:10px 0 0; }
 .os-form-actions > a { margin-right:auto; color:var(--muted); font-size:11px; }
 
-@media (max-width: 1050px) {
+@media (max-width: 860px) {
   .os-shell { grid-template-columns: 84px minmax(0,1fr); }
   .os-sidebar { padding-inline: 13px; }
   .os-brand { font-size: 16px; }
-  .os-product, .os-nav a span:last-child, .os-sidebar-footer { display: none; }
+  .os-product, .os-nav-label { display: none; }
+  .os-sidebar-footer { display:flex; padding:0; border:0; }
+  .os-sidebar-footer > span, .os-sidebar-footer > a { display:none; }
+  .os-language-switcher { flex-direction:column; }
   .os-nav a { grid-template-columns: 1fr; justify-items: center; padding: 0; }
   .os-nav-code { font-size: 10px; }
   .os-dashboard-grid { grid-template-columns: 1fr; }
@@ -379,6 +385,8 @@ h3 { font-weight: 760; }
   .os-shell { display:block; }
   .os-sidebar { position:relative; height:auto; padding:15px 14px; flex-direction:row; align-items:center; gap:15px; overflow-x:auto; }
   .os-brand { font-size:20px; flex:0 0 auto; }
+  .os-sidebar-footer { margin:0 0 0 auto; flex:0 0 auto; }
+  .os-language-switcher { flex-direction:row; }
   .os-nav { display:flex; gap:3px; }
   .os-nav a { width:42px; height:38px; min-height:38px; flex:0 0 42px; border-left:0; border-bottom:2px solid transparent; }
   .os-nav a.active { border-left:0; border-bottom-color:var(--orange); }
