@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   devIndicators: false,
+  serverExternalPackages: ["pdfkit", "@napi-rs/canvas"],
   allowedDevOrigins: ["192.168.8.220"],
   experimental: {
     serverActions: { bodySizeLimit: SERVER_ACTION_BODY_SIZE_LIMIT },

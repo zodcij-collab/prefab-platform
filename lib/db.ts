@@ -10,6 +10,7 @@ export const db = globalForDb.prefabDb ?? new DatabaseSync(dbPath);
 if (process.env.NODE_ENV !== "production") globalForDb.prefabDb = db;
 
 db.exec(`
+PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'Director',password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -26,7 +27,12 @@ CREATE TABLE IF NOT EXISTS project_photos (id INTEGER PRIMARY KEY AUTOINCREMENT,
 CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL,employee_id TEXT NOT NULL,project_role TEXT NOT NULL DEFAULT 'Team member',assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(project_id, employee_id),FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS project_documents (id INTEGER PRIMARY KEY AUTOINCREMENT,project_id TEXT NOT NULL,title TEXT NOT NULL,category TEXT NOT NULL,revision TEXT NOT NULL DEFAULT '',document_date TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'Current',description TEXT NOT NULL DEFAULT '',original_filename TEXT NOT NULL,stored_path TEXT NOT NULL UNIQUE,file_size INTEGER NOT NULL,mime_type TEXT NOT NULL,uploaded_by_id INTEGER,uploaded_by TEXT NOT NULL,uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,FOREIGN KEY(uploaded_by_id) REFERENCES users(id) ON DELETE SET NULL);
+CREATE TABLE IF NOT EXISTS employee_project_assignments (id INTEGER PRIMARY KEY AUTOINCREMENT,employee_id TEXT NOT NULL,project_id TEXT NOT NULL,project_role TEXT NOT NULL DEFAULT 'Team member',start_date TEXT NOT NULL,end_date TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE RESTRICT,FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT);
+CREATE TABLE IF NOT EXISTS attendance_entries (id INTEGER PRIMARY KEY AUTOINCREMENT,report_id INTEGER NOT NULL,employee_id TEXT NOT NULL,project_id TEXT NOT NULL,work_date TEXT NOT NULL,attendance_status TEXT NOT NULL,regular_hours REAL NOT NULL DEFAULT 0 CHECK(regular_hours >= 0),overtime_hours REAL NOT NULL DEFAULT 0 CHECK(overtime_hours >= 0),comment TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(report_id,employee_id),FOREIGN KEY(report_id) REFERENCES reports(id) ON DELETE CASCADE,FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE RESTRICT,FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT);
+CREATE TABLE IF NOT EXISTS timesheet_periods (period TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'Open',reviewed_by_id INTEGER,reviewed_at TEXT NOT NULL DEFAULT '',closed_by_id INTEGER,closed_at TEXT NOT NULL DEFAULT '',FOREIGN KEY(reviewed_by_id) REFERENCES users(id) ON DELETE SET NULL,FOREIGN KEY(closed_by_id) REFERENCES users(id) ON DELETE SET NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_nocase ON users(email COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS attendance_period_idx ON attendance_entries(work_date,project_id,employee_id);
+CREATE INDEX IF NOT EXISTS employee_assignments_idx ON employee_project_assignments(employee_id,project_id,start_date);
 `);
 
 const projectColumns = new Set((db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((column) => column.name));
@@ -44,6 +50,32 @@ if (!photoColumns.has("file_size")) db.exec("ALTER TABLE project_photos ADD COLU
 if (!photoColumns.has("mime_type")) db.exec("ALTER TABLE project_photos ADD COLUMN mime_type TEXT NOT NULL DEFAULT ''");
 if (!photoColumns.has("uploaded_by_id")) db.exec("ALTER TABLE project_photos ADD COLUMN uploaded_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
 if (!photoColumns.has("uploaded_at")) db.exec("ALTER TABLE project_photos ADD COLUMN uploaded_at TEXT NOT NULL DEFAULT ''");
+if (!photoColumns.has("report_id")) db.exec("ALTER TABLE project_photos ADD COLUMN report_id INTEGER REFERENCES reports(id) ON DELETE SET NULL");
+const employeeColumns = new Set((db.prepare("PRAGMA table_info(employees)").all() as { name: string }[]).map((column) => column.name));
+if (!employeeColumns.has("first_name")) db.exec("ALTER TABLE employees ADD COLUMN first_name TEXT NOT NULL DEFAULT ''");
+if (!employeeColumns.has("last_name")) db.exec("ALTER TABLE employees ADD COLUMN last_name TEXT NOT NULL DEFAULT ''");
+if (!employeeColumns.has("email")) db.exec("ALTER TABLE employees ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+if (!employeeColumns.has("employment_status")) db.exec("ALTER TABLE employees ADD COLUMN employment_status TEXT NOT NULL DEFAULT 'Active'");
+if (!employeeColumns.has("default_project_id")) db.exec("ALTER TABLE employees ADD COLUMN default_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL");
+if (!employeeColumns.has("employment_start_date")) db.exec("ALTER TABLE employees ADD COLUMN employment_start_date TEXT NOT NULL DEFAULT ''");
+if (!employeeColumns.has("employment_end_date")) db.exec("ALTER TABLE employees ADD COLUMN employment_end_date TEXT NOT NULL DEFAULT ''");
+if (!employeeColumns.has("notes")) db.exec("ALTER TABLE employees ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+const userColumns = new Set((db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((column) => column.name));
+if (!userColumns.has("employee_id")) db.exec("ALTER TABLE users ADD COLUMN employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_employee_unique ON users(employee_id) WHERE employee_id IS NOT NULL");
+const reportColumns = new Set((db.prepare("PRAGMA table_info(reports)").all() as { name: string }[]).map((column) => column.name));
+if (!reportColumns.has("reporter_user_id")) db.exec("ALTER TABLE reports ADD COLUMN reporter_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+if (!reportColumns.has("reporter_employee_id")) db.exec("ALTER TABLE reports ADD COLUMN reporter_employee_id TEXT REFERENCES employees(id) ON DELETE SET NULL");
+if (!reportColumns.has("status")) db.exec("ALTER TABLE reports ADD COLUMN status TEXT NOT NULL DEFAULT 'Submitted'");
+if (!reportColumns.has("materials")) db.exec("ALTER TABLE reports ADD COLUMN materials TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("equipment")) db.exec("ALTER TABLE reports ADD COLUMN equipment TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("problems")) db.exec("ALTER TABLE reports ADD COLUMN problems TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("safety")) db.exec("ALTER TABLE reports ADD COLUMN safety TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("additional_notes")) db.exec("ALTER TABLE reports ADD COLUMN additional_notes TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("updated_at")) db.exec("ALTER TABLE reports ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("submitted_at")) db.exec("ALTER TABLE reports ADD COLUMN submitted_at TEXT NOT NULL DEFAULT ''");
+if (!reportColumns.has("approved_by_id")) db.exec("ALTER TABLE reports ADD COLUMN approved_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+if (!reportColumns.has("approved_at")) db.exec("ALTER TABLE reports ADD COLUMN approved_at TEXT NOT NULL DEFAULT ''");
 
 function count(table: string) { return Number((db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c); }
 
@@ -93,4 +125,117 @@ if (!membershipMigration) {
     SELECT p.id, e.id, CASE WHEN e.role = 'Foreman' THEN 'Site lead' ELSE e.role END
     FROM employees e JOIN projects p ON p.name = e.project`);
   db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run("sprint7_project_members");
+}
+
+const sprint10Migration = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint10_workforce_attendance");
+if (!sprint10Migration) {
+  db.exec(`
+    UPDATE employees
+    SET first_name = CASE WHEN instr(trim(name),' ') > 0 THEN substr(trim(name),1,instr(trim(name),' ')-1) ELSE trim(name) END,
+        last_name = CASE WHEN instr(trim(name),' ') > 0 THEN substr(trim(name),instr(trim(name),' ')+1) ELSE '' END,
+        employment_status = CASE WHEN status = 'Off' THEN 'Unavailable' ELSE 'Active' END
+    WHERE first_name = '' AND last_name = '';
+    UPDATE employees SET default_project_id = (SELECT id FROM projects WHERE projects.name = employees.project COLLATE NOCASE LIMIT 1) WHERE default_project_id IS NULL;
+    INSERT INTO employee_project_assignments(employee_id,project_id,project_role,start_date)
+      SELECT m.employee_id,m.project_id,m.project_role,substr(m.assigned_at,1,10)
+      FROM project_members m
+      WHERE NOT EXISTS (SELECT 1 FROM employee_project_assignments a WHERE a.employee_id=m.employee_id AND a.project_id=m.project_id AND a.end_date='');
+    UPDATE reports SET submitted_at = COALESCE(NULLIF(submitted_at,''),created_at), updated_at = COALESCE(NULLIF(updated_at,''),created_at), status='Submitted';
+  `);
+  db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run("sprint10_workforce_attendance");
+}
+
+const sprint10UserLinks = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint10_user_employee_links");
+if (!sprint10UserLinks) {
+  db.exec(`
+    UPDATE users
+    SET employee_id = (
+      SELECT e.id FROM employees e
+      WHERE (e.email <> '' AND e.email = users.email COLLATE NOCASE)
+         OR e.name = users.name COLLATE NOCASE
+      ORDER BY CASE WHEN e.email <> '' AND e.email = users.email COLLATE NOCASE THEN 0 ELSE 1 END
+      LIMIT 1
+    )
+    WHERE employee_id IS NULL
+      AND (SELECT COUNT(*) FROM employees e
+        WHERE (e.email <> '' AND e.email = users.email COLLATE NOCASE)
+           OR e.name = users.name COLLATE NOCASE) = 1;
+  `);
+  db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run("sprint10_user_employee_links");
+}
+
+const sprint101ReportMedia = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint10_1_report_media");
+if (!sprint101ReportMedia) {
+  db.exec("CREATE INDEX IF NOT EXISTS project_photos_report_idx ON project_photos(report_id, uploaded_at)");
+  db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run("sprint10_1_report_media");
+}
+
+const sprint11Elements = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_project_elements");
+if (!sprint11Elements) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_elements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      code TEXT NOT NULL COLLATE NOCASE,
+      element_type TEXT NOT NULL,
+      floor TEXT NOT NULL DEFAULT '',
+      zone TEXT NOT NULL DEFAULT '',
+      drawing_ref TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      weight REAL,
+      length REAL,
+      width REAL,
+      height REAL,
+      supplier TEXT NOT NULL DEFAULT '',
+      planned_delivery_date TEXT NOT NULL DEFAULT '',
+      actual_delivery_date TEXT NOT NULL DEFAULT '',
+      installation_date TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Planned',
+      issue_note TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      installed_report_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(installed_report_id) REFERENCES reports(id) ON DELETE RESTRICT,
+      UNIQUE(project_id, code)
+    );
+    CREATE TABLE IF NOT EXISTS daily_report_elements (
+      report_id INTEGER NOT NULL,
+      element_id INTEGER NOT NULL,
+      selected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finalized_at TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY(report_id, element_id),
+      FOREIGN KEY(report_id) REFERENCES reports(id) ON DELETE CASCADE,
+      FOREIGN KEY(element_id) REFERENCES project_elements(id) ON DELETE RESTRICT
+    );
+    CREATE TABLE IF NOT EXISTS element_status_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      element_id INTEGER NOT NULL,
+      from_status TEXT NOT NULL DEFAULT '',
+      to_status TEXT NOT NULL,
+      event_date TEXT NOT NULL DEFAULT '',
+      report_id INTEGER,
+      actor_user_id INTEGER,
+      actor TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(element_id) REFERENCES project_elements(id) ON DELETE RESTRICT,
+      FOREIGN KEY(report_id) REFERENCES reports(id) ON DELETE SET NULL,
+      FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS project_elements_filter_idx ON project_elements(project_id,active,floor,zone,element_type,status,code);
+    CREATE INDEX IF NOT EXISTS report_elements_report_idx ON daily_report_elements(report_id,element_id);
+    CREATE INDEX IF NOT EXISTS element_history_element_idx ON element_status_history(element_id,created_at);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_project_elements");
+}
+const sprint11CorrectionGuard = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_element_correction_guard");
+if (!sprint11CorrectionGuard) {
+  db.exec(`CREATE TRIGGER IF NOT EXISTS project_elements_installed_correction_guard
+    BEFORE UPDATE OF status ON project_elements
+    WHEN OLD.status='Installed' AND NEW.status<>'Installed' AND NEW.installed_report_id IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Installed elements require the correction workflow'); END;`);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_element_correction_guard");
 }

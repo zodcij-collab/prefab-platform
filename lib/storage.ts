@@ -1,7 +1,7 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { extname, join, resolve } from "node:path";
-import { UPLOAD_MAX_FILE_BYTES } from "./upload-config";
+import { UPLOAD_MAX_FILE_BYTES } from "./upload-config.ts";
 
 export type StorageArea = "documents" | "photos";
 const root = resolve(process.cwd(), "storage", "uploads");

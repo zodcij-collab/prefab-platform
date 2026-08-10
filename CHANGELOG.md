@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.1 — Sprint 10.1 Accounting & Daily Report Media Polish
+
+- Added explicit monthly sick-leave, vacation, absent, day-off, business-trip, and other-status totals.
+- Added secure multi-image Daily Report media using the existing protected project-photo storage.
+- Added filtered three-sheet XLSX accounting export alongside CSV, with matching portal totals and Unicode support.
+- Added authorized branded Daily Report PDF export, A4 print styling, localized e-mail drafts, and PDF-file Web Share support.
+- Strengthened project-scoped photo download and management authorization and documented closed-month behavior.
+
+## 0.10.0 — Sprint 10 Workforce & Timesheets
+
+- Extended employees into a non-login workforce register with project assignment history.
+- Added Daily Report draft/submission/approval workflow and per-employee attendance.
+- Added monthly timesheet aggregation, auditable detail, anomaly warnings, month status, and UTF-8 CSV export.
+- Added project-scoped RBAC, server-backed workforce/document/report filters, LV/EN/RU copy, and mobile attendance entry.
+
 ## 0.9.0 — Sprint 9
 - Added the database-backed portal workspace foundation with centralized LV/EN/RU navigation and operational module localization.
 - Refined live portal dashboard metrics, responsive language controls and project schedule visibility without changing authentication or permissions.

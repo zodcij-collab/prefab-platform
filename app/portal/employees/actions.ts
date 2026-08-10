@@ -1,0 +1,23 @@
+"use server";
+import {randomUUID} from "node:crypto";
+import {redirect} from "next/navigation";
+import {revalidatePath} from "next/cache";
+import {requireUser} from "../../../lib/auth";
+import {canManageEmployees} from "../../../lib/permissions";
+import {createEmployee,getEmployee,getProject,logActivity,runTransaction,setEmployeeDefaultProject,setEmployeeStatus,updateEmployee,type EmployeeInput} from "../../../lib/repositories";
+import {employeeStatuses,employeeTrades} from "../../../lib/workforce";
+
+export type EmployeeActionState={error:string};
+const clean=(data:FormData,key:string,max=500)=>String(data.get(key)??"").trim().slice(0,max);
+function input(data:FormData):{error:string}|{value:Omit<EmployeeInput,"id">}{
+  const firstName=clean(data,"firstName",80),lastName=clean(data,"lastName",80),role=clean(data,"role",80),phone=clean(data,"phone",60),email=clean(data,"email",160).toLowerCase(),status=clean(data,"status",30),defaultProjectId=clean(data,"defaultProjectId",100)||null,employmentStartDate=clean(data,"employmentStartDate",10),employmentEndDate=clean(data,"employmentEndDate",10),notes=clean(data,"notes",3000);
+  if(!firstName||!lastName)return{error:"Employee name is required."};
+  if(!employeeTrades.includes(role as typeof employeeTrades[number])||!employeeStatuses.includes(status as typeof employeeStatuses[number]))return{error:"Invalid employee role or status."};
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return{error:"Enter a valid email address."};
+  if(defaultProjectId&&!getProject(defaultProjectId))return{error:"Project not found."};
+  if(employmentStartDate&&employmentEndDate&&employmentEndDate<employmentStartDate)return{error:"Employment end date cannot be before start date."};
+  return{value:{firstName,lastName,role,phone,email,status,defaultProjectId,employmentStartDate,employmentEndDate,notes}};
+}
+export async function createEmployeeAction(_:EmployeeActionState,data:FormData):Promise<EmployeeActionState>{const user=await requireUser();if(!canManageEmployees(user))return{error:"You do not have permission to manage employees."};const parsed=input(data);if("error"in parsed)return parsed;const id=`emp-${randomUUID()}`;runTransaction(()=>{createEmployee({id,...parsed.value});setEmployeeDefaultProject(id,parsed.value.defaultProjectId,parsed.value.role,parsed.value.employmentStartDate||new Date().toISOString().slice(0,10));logActivity({userId:user.id,actor:user.name,action:"Created employee",entityType:"employee",entityId:id,details:`${parsed.value.firstName} ${parsed.value.lastName}`});});redirect(`/portal/employees/${id}`);}
+export async function updateEmployeeAction(_:EmployeeActionState,data:FormData):Promise<EmployeeActionState>{const user=await requireUser();if(!canManageEmployees(user))return{error:"You do not have permission to manage employees."};const id=clean(data,"employeeId",100),existing=getEmployee(id);if(!existing)return{error:"Employee not found."};const parsed=input(data);if("error"in parsed)return parsed;runTransaction(()=>{updateEmployee(id,parsed.value);if(existing.defaultProjectId!==parsed.value.defaultProjectId)setEmployeeDefaultProject(id,parsed.value.defaultProjectId,parsed.value.role,new Date().toISOString().slice(0,10));logActivity({userId:user.id,actor:user.name,action:"Updated employee",entityType:"employee",entityId:id,details:`${parsed.value.firstName} ${parsed.value.lastName}`});});redirect(`/portal/employees/${id}`);}
+export async function deactivateEmployeeAction(data:FormData){const user=await requireUser();if(!canManageEmployees(user))throw new Error("Forbidden");const id=clean(data,"employeeId",100),employee=getEmployee(id);if(!employee)throw new Error("Employee not found");runTransaction(()=>{setEmployeeStatus(id,"Inactive",new Date().toISOString().slice(0,10));logActivity({userId:user.id,actor:user.name,action:"Deactivated employee",entityType:"employee",entityId:id,details:employee.name});});revalidatePath("/portal/employees");redirect(`/portal/employees/${id}`);}

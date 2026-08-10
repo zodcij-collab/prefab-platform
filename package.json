@@ -1,6 +1,6 @@
 {
   "name": "prefab-platform",
-  "version": "0.9.0",
+  "version": "0.10.1",
   "private": true,
   "engines": {
     "node": ">=22.5.0"
@@ -11,15 +11,21 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "check": "npm run lint && npm run typecheck && npm run build"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.5",
+    "dejavu-fonts-ttf": "^2.37.3",
+    "fflate": "^0.8.3",
     "next": "16.2.12",
+    "pdfkit": "^0.17.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@types/node": "latest",
+    "@types/pdfkit": "^0.17.3",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "eslint": "latest",

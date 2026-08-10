@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { createUserAction,updateUserAction,type UserFormState } from "../../app/portal/access/actions";
-import { ROLES } from "../../lib/permissions";
+import { ROLES } from "../../lib/roles";
 
 export type AccessUserDto={id:number;name:string;email:string;role:string;active:boolean;createdAt:string};
 
