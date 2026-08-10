@@ -3,7 +3,7 @@ import {createCanvas,loadImage} from "@napi-rs/canvas";
 import {join} from "node:path";
 import type {PortalLanguage} from "../data/portal-i18n.ts";
 import {portalText} from "../data/portal-i18n.ts";
-import type {AttendanceEntry,DailyReport,ProjectElement,ProjectPhoto} from "./repositories.ts";
+import type {AttendanceEntry,DailyReport,ProjectElement,ProjectPhoto,ReportWeather} from "./repositories.ts";
 import {formatAppDateTime} from "./datetime.ts";
 import {readStoredFile} from "./storage.ts";
 
@@ -11,12 +11,21 @@ const ORANGE="#f26522",INK="#171717",MUTED="#686868",LINE="#d8d8d8",PAPER="#ffff
 const regularFont=join(process.cwd(),"node_modules","dejavu-fonts-ttf","ttf","DejaVuSans.ttf");
 const boldFont=join(process.cwd(),"node_modules","dejavu-fonts-ttf","ttf","DejaVuSans-Bold.ttf");
 
-export type DailyReportPdfRecord={report:DailyReport;attendance:AttendanceEntry[];photos:ProjectPhoto[];elements?:ProjectElement[];approvedBy:string};
+export type DailyReportPdfRecord={report:DailyReport;attendance:AttendanceEntry[];photos:ProjectPhoto[];elements?:ProjectElement[];weather?:ReportWeather[];approvedBy:string};
 type SingleReportPdfInput=Omit<DailyReportPdfRecord,"approvedBy">&{approvedBy?:string;language:PortalLanguage};
 type ArchivePdfInput={project:string;period:string;records:DailyReportPdfRecord[];language:PortalLanguage};
 
+export function dailyReportPdfWeatherModel(report:Pick<DailyReport,"weather">,weather:ReportWeather[],language:PortalLanguage){
+  const t=(value:string)=>portalText(language,value);
+  return{
+    summary:weather.length?weather.map((row)=>row.timepoint).join(" · "):(report.weather||"—"),
+    lines:weather.map((row)=>`${row.timepoint}  ${row.temperature===null?"—":`${row.temperature>0?"+":""}${row.temperature}°C`}  ${t(row.condition)}  ${t("Precipitation")} ${row.precipitation??"—"} mm  ${t("Wind")} ${row.windSpeed??"—"} m/s${row.windGust===null?"":`  ${t("Gust")} ${row.windGust} m/s`}`),
+    manualNote:report.weather,
+  };
+}
+
 export async function generateDailyReportPdf(input:SingleReportPdfInput):Promise<Buffer>{
-  return generateDocument({records:[{report:input.report,attendance:input.attendance,photos:input.photos,elements:input.elements??[],approvedBy:input.approvedBy??""}],language:input.language});
+  return generateDocument({records:[{report:input.report,attendance:input.attendance,photos:input.photos,elements:input.elements??[],weather:input.weather??[],approvedBy:input.approvedBy??""}],language:input.language});
 }
 
 export async function generateDailyReportArchivePdf(input:ArchivePdfInput):Promise<Buffer>{
@@ -36,7 +45,7 @@ async function generateDocument(input:{records:DailyReportPdfRecord[];language:P
   if(input.cover)renderCover(doc,input.records,input.project??"",input.period??"",generatedAt,t,font);
   for(let index=0;index<input.records.length;index++){
     if(input.cover||index>0)doc.addPage();
-    await renderReport(doc,input.records[index],generatedAt,t,font);
+    await renderReport(doc,input.records[index],generatedAt,input.language,t,font);
   }
   addFooters(doc,generatedAt,t,font);
   doc.end();return done;
@@ -59,8 +68,9 @@ function renderCover(doc:PDFKit.PDFDocument,records:DailyReportPdfRecord[],proje
   }
 }
 
-async function renderReport(doc:PDFKit.PDFDocument,record:DailyReportPdfRecord,generatedAt:string,t:(value:string)=>string,font:(value:string,bold?:boolean)=>PDFKit.PDFDocument){
-  const {report,attendance,photos,elements=[]}=record;
+async function renderReport(doc:PDFKit.PDFDocument,record:DailyReportPdfRecord,generatedAt:string,language:PortalLanguage,t:(value:string)=>string,font:(value:string,bold?:boolean)=>PDFKit.PDFDocument){
+  const {report,attendance,photos,elements=[],weather=[]}=record;
+  const weatherModel=dailyReportPdfWeatherModel(report,weather,language);
   const left=38,width=519,bottom=doc.page.height-48;
   const ensure=(height:number)=>{if(doc.y+height>bottom)doc.addPage();};
   const write=(value:string,options:PDFKit.Mixins.TextOptions={},bold=false)=>font(value,bold).fillColor(INK).text(value,options);
@@ -69,8 +79,14 @@ async function renderReport(doc:PDFKit.PDFDocument,record:DailyReportPdfRecord,g
   const field=(label:string,value:string,x:number,y:number,fieldWidth:number)=>{font(label,true).fontSize(6.2).fillColor(MUTED).text(label.toUpperCase(),x,y,{width:fieldWidth,height:8,ellipsis:true});font(value||"—",false).fontSize(8.2).fillColor(INK).text(value||"—",x,y+10,{width:fieldWidth,height:11,ellipsis:true});};
   doc.y=54;font(t("Daily report"),true).fontSize(17).fillColor(INK).text(t("Daily report"),left,54,{width:350});font(`#${report.id}`,true).fontSize(17).fillColor(ORANGE).text(`#${report.id}`,430,54,{width:127,align:"right"});
   const metaY=84;field(t("Project"),report.project,left,metaY,250);field(t("Report date"),report.date,300,metaY,90);field(t("Report status"),t(report.status),405,metaY,152);
-  field(t("Prepared by"),report.author,left,metaY+29,175);field(t("Approved by"),report.status==="Approved"?(record.approvedBy||t("Unknown approver")):"—",228,metaY+29,175);field(t("Weather"),report.weather||"—",418,metaY+29,139);
+  field(t("Prepared by"),report.author,left,metaY+29,175);field(t("Approved by"),report.status==="Approved"?(record.approvedBy||t("Unknown approver")):"—",228,metaY+29,175);field(t("Weather"),weatherModel.summary,418,metaY+29,139);
   field(t("Generated"),formatAppDateTime(generatedAt),left,metaY+58,190);field(t("Revision"),dailyReportRevision(report),244,metaY+58,170);doc.y=metaY+84;
+  if(weather.length){
+    heading(t("Weather snapshot"));
+    const lines=weatherModel.lines;
+    const weatherHeight=lines.length*10;ensure(weatherHeight+5);font("",false).fontSize(7.2).fillColor(INK);for(const line of lines){doc.text(line,left,doc.y,{width,height:9,ellipsis:true});doc.y+=10;}doc.y+=3;
+    if(report.weather){font(t("Manual weather note"),true).fontSize(6.6).fillColor(MUTED).text(`${t("Manual weather note")}:`,left,doc.y,{continued:true});font(report.weather,false).fillColor(INK).text(` ${report.weather}`,{width:430});doc.y+=4;}
+  }
   heading(t("General work performed"));paragraph(report.work);heading(t("Workforce attendance"));
   if(attendance.length===0)paragraph(t("No attendance data"));
   else for(const entry of attendance){

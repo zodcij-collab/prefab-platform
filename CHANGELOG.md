@@ -1,5 +1,17 @@
 # Changelog
 
+- Sprint 11.1 acceptance correction: immutable physical-element IDs now support repeated supplier marks without rewriting source codes.
+- XLSX Mapping/Preview sessions now persist review decisions and use ambiguity-safe matching that protects Installed operational history.
+
+## Sprint 11.1 — Practical Operations Upgrade
+
+- Added version-aware XLSX element-register synchronization with worksheet/header mapping, SHA-256 duplicate detection, field-level diff review, import revision history and transactional design-data-only apply.
+- Added safe project-scoped bulk Expected, Delivered and On site actions with status history and audit logging.
+- Added project coordinates and persistent four-timepoint Daily Report weather snapshots with manual fallback and official PDF/archive output.
+- Added LV/EN/RU and mobile layouts for synchronization, bulk operations and weather.
+- Improved XLSX synchronization with detected/overrideable header rows, real-column selectors, sample values, safe supplier aliases and structured localized row validation.
+- Grouped repeated unknown element types into reusable per-import mappings and added blocking duplicate-code diagnostics with explicit row exclusion and import-trace recording.
+
 ## 0.10.1 — Sprint 10.1 Accounting & Daily Report Media Polish
 
 - Added explicit monthly sick-leave, vacation, absent, day-off, business-trip, and other-status totals.

@@ -5,7 +5,7 @@ import {ReportMediaUploadForm} from "../../../../components/portal/ReportMediaUp
 import {DailyReportExportMenu} from "../../../../components/portal/DailyReportExportMenu";
 import {ReportApprovalForm} from "../../../../components/portal/ReportApprovalForm";
 import {DestructiveAction} from "../../../../components/portal/DestructiveAction";
-import {getReport,getUserAccess,listAttendanceForReport,listReportElements,listReportPhotos} from "../../../../lib/repositories";
+import {getReport,getUserAccess,listAttendanceForReport,listReportElements,listReportPhotos,listReportWeather} from "../../../../lib/repositories";
 import {requireUser} from "../../../../lib/auth";
 import {canAccessProject,canManageProjectOperations,canReviewDailyReports} from "../../../../lib/permissions";
 import {getPortalLanguage} from "../../../../lib/portal-locale";
@@ -22,7 +22,7 @@ export default async function ReportPage({params}:{params:Promise<{id:string}>})
   if(!canAccessProject(user,report.projectId))notFound();
   const language=await getPortalLanguage();
   const t=(value:string)=>portalText(language,value);
-  const entries=listAttendanceForReport(report.id),photos=listReportPhotos(report.id),elements=listReportElements(report.id);
+  const entries=listAttendanceForReport(report.id),photos=listReportPhotos(report.id),elements=listReportElements(report.id),weather=listReportWeather(report.id);
   const approvedBy=report.approvedById?getUserAccess(report.approvedById)?.name??"":"";
   const canEdit=(report.status==="Draft"&&report.reporterUserId===user.id)||canReviewDailyReports(user);
   const canUpload=canManageProjectOperations(user);
@@ -40,6 +40,7 @@ export default async function ReportPage({params}:{params:Promise<{id:string}>})
       {report.status==="Approved"&&<Meta label={t("Approved by")} value={approvedBy||t("Unknown approver")}/>}<Meta label={t("Revision")} value={dailyReportRevision(report)}/><Meta label={t("Generated")} value={formatAppDateTime(new Date().toISOString())}/>
     </section>
     <section className="os-project-summary"><div><span>{t("Reporter")}</span><strong>{report.author}</strong></div><div><span>{t("Weather")}</span><strong>{report.weather||"—"}</strong></div><div><span>{t("General work performed")}</span><p>{report.work||"—"}</p></div></section>
+    {weather.length>0&&<section className="os-weather-grid os-panel">{weather.map((row)=><article key={row.id}><strong>{row.timepoint}</strong><span>{row.temperature===null?"—":`${row.temperature>0?"+":""}${row.temperature}°C`}</span><small>{t(row.condition)}</small><small>{t("Wind")} {row.windSpeed??"—"} m/s{row.windGust!==null?` · ${t("Gust")} ${row.windGust} m/s`:""}</small><small>{t("Precipitation")} {row.precipitation??"—"} mm</small></article>)}</section>}
     <section className="os-panel"><div className="os-panel-head"><h2>{t("Workforce attendance")}</h2><span>{entries.length} {t("employees")}</span></div><div className="os-attendance-summary">{entries.map((entry)=><article key={entry.id}><div><strong>{entry.employeeName}</strong><small>{t(entry.position)} · {t(entry.status)}</small></div><span>{entry.regularHours} + {entry.overtimeHours} = <strong>{entry.regularHours+entry.overtimeHours} h</strong></span>{entry.comment&&<p>{entry.comment}</p>}</article>)}</div></section>
     <section className="os-panel"><div className="os-panel-head"><h2>{t("Installed elements")}</h2><span>{elements.length}</span></div><div className="os-element-register">{elements.map((element)=><Link className="os-element-card" href={`/portal/projects/${element.projectId}/elements/${element.id}`} key={element.id}><div><strong>{element.code}</strong><StatusBadge status={element.status} label={t(element.status)}/></div><span>{t(element.elementType)} · {element.floor||"—"} · {element.zone||"—"}</span></Link>)}</div></section>
     <section className="os-panel os-report-media-section"><div className="os-panel-head"><div><p>{t("Site-day evidence").toUpperCase()}</p><h2>{t("Photos / Attachments")}</h2></div><span>{photos.length} {t("photos")}</span></div>{photos.length>0?<div className="os-photo-grid">{photos.map((photo)=><article key={photo.id}><Link href={`/portal/files/photos/${photo.id}`} target="_blank"><div className="os-photo-image" role="img" aria-label={photo.caption} style={{backgroundImage:`url(/portal/files/photos/${photo.id})`}}/></Link><div><strong>{photo.caption}</strong><span>{photo.photoDate}{photo.area?` · ${photo.area}`:""}</span><small>{photo.author} · {formatAppDateTime(photo.uploadedAt)}</small><small>{photo.originalFilename}</small>{photo.notes&&<p>{photo.notes}</p>}</div></article>)}</div>:<p className="os-empty-state">{t("No photos are attached to this Daily Report.")}</p>}{canUpload&&<details className="os-report-media-uploader"><summary>+ {t("Attach photos")}</summary><ReportMediaUploadForm reportId={report.id} language={language}/></details>}</section>

@@ -17,6 +17,7 @@
   "dependencies": {
     "@napi-rs/canvas": "^1.0.5",
     "dejavu-fonts-ttf": "^2.37.3",
+    "exceljs": "^4.4.0",
     "fflate": "^0.8.3",
     "next": "16.2.12",
     "pdfkit": "^0.17.2",
@@ -31,5 +32,10 @@
     "eslint": "latest",
     "eslint-config-next": "16.2.12",
     "typescript": "6.0.2"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

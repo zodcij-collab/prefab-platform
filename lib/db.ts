@@ -239,3 +239,83 @@ if (!sprint11CorrectionGuard) {
     BEGIN SELECT RAISE(ABORT,'Installed elements require the correction workflow'); END;`);
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_element_correction_guard");
 }
+
+const sprint111 = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_1_operations_upgrade");
+if (!sprint111) {
+  const projectGeoColumns = new Set((db.prepare("PRAGMA table_info(projects)").all() as {name:string}[]).map((column)=>column.name));
+  if(!projectGeoColumns.has("latitude")) db.exec("ALTER TABLE projects ADD COLUMN latitude REAL");
+  if(!projectGeoColumns.has("longitude")) db.exec("ALTER TABLE projects ADD COLUMN longitude REAL");
+  const elementSourceColumns = new Set((db.prepare("PRAGMA table_info(project_elements)").all() as {name:string}[]).map((column)=>column.name));
+  if(!elementSourceColumns.has("created_import_id")) db.exec("ALTER TABLE project_elements ADD COLUMN created_import_id INTEGER");
+  if(!elementSourceColumns.has("last_import_id")) db.exec("ALTER TABLE project_elements ADD COLUMN last_import_id INTEGER");
+  if(!elementSourceColumns.has("last_source_revision")) db.exec("ALTER TABLE project_elements ADD COLUMN last_source_revision TEXT NOT NULL DEFAULT ''");
+  if(!elementSourceColumns.has("source_presence")) db.exec("ALTER TABLE project_elements ADD COLUMN source_presence TEXT NOT NULL DEFAULT 'Present'");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS element_register_imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, original_filename TEXT NOT NULL,
+      source_revision TEXT NOT NULL DEFAULT '', source_hash TEXT NOT NULL, worksheet_name TEXT NOT NULL DEFAULT '',
+      mapping_json TEXT NOT NULL DEFAULT '{}', payload_json TEXT NOT NULL DEFAULT '[]', summary_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'Preview', notes TEXT NOT NULL DEFAULT '', imported_by_id INTEGER,
+      imported_by TEXT NOT NULL, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, applied_at TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(imported_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS element_import_project_idx ON element_register_imports(project_id, imported_at);
+    CREATE INDEX IF NOT EXISTS element_import_hash_idx ON element_register_imports(project_id, source_hash, status);
+    CREATE TABLE IF NOT EXISTS daily_report_weather (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL, timepoint TEXT NOT NULL,
+      temperature REAL, condition_code INTEGER, condition TEXT NOT NULL DEFAULT '', precipitation REAL,
+      wind_speed REAL, wind_gust REAL, provider TEXT NOT NULL, retrieved_at TEXT NOT NULL,
+      UNIQUE(report_id,timepoint), FOREIGN KEY(report_id) REFERENCES reports(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS report_weather_report_idx ON daily_report_weather(report_id,timepoint);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_1_operations_upgrade");
+}
+
+const repeatedElementMarks = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_1_repeated_element_marks");
+if (!repeatedElementMarks) {
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec(`
+    DROP TRIGGER IF EXISTS project_elements_installed_correction_guard;
+    CREATE TABLE project_elements_repeated_marks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, code TEXT NOT NULL COLLATE NOCASE,
+      element_type TEXT NOT NULL, floor TEXT NOT NULL DEFAULT '', zone TEXT NOT NULL DEFAULT '',
+      drawing_ref TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', weight REAL, length REAL,
+      width REAL, height REAL, supplier TEXT NOT NULL DEFAULT '', planned_delivery_date TEXT NOT NULL DEFAULT '',
+      actual_delivery_date TEXT NOT NULL DEFAULT '', installation_date TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'Planned',
+      issue_note TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+      installed_report_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_import_id INTEGER, last_import_id INTEGER, last_source_revision TEXT NOT NULL DEFAULT '',
+      source_presence TEXT NOT NULL DEFAULT 'Present', source_key TEXT NOT NULL DEFAULT '', source_row INTEGER,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(installed_report_id) REFERENCES reports(id) ON DELETE RESTRICT
+    );
+    INSERT INTO project_elements_repeated_marks(id,project_id,code,element_type,floor,zone,drawing_ref,description,weight,length,width,height,supplier,planned_delivery_date,actual_delivery_date,installation_date,status,issue_note,notes,active,installed_report_id,created_at,updated_at,created_import_id,last_import_id,last_source_revision,source_presence)
+      SELECT id,project_id,code,element_type,floor,zone,drawing_ref,description,weight,length,width,height,supplier,planned_delivery_date,actual_delivery_date,installation_date,status,issue_note,notes,active,installed_report_id,created_at,updated_at,created_import_id,last_import_id,last_source_revision,source_presence FROM project_elements;
+    DROP TABLE project_elements;
+    ALTER TABLE project_elements_repeated_marks RENAME TO project_elements;
+    CREATE INDEX project_elements_filter_idx ON project_elements(project_id,active,floor,zone,element_type,status,code);
+    CREATE INDEX project_elements_code_idx ON project_elements(project_id,code,id);
+    CREATE INDEX project_elements_source_key_idx ON project_elements(project_id,source_key);
+    CREATE TRIGGER project_elements_installed_correction_guard BEFORE UPDATE OF status ON project_elements
+      WHEN OLD.status='Installed' AND NEW.status<>'Installed' AND NEW.installed_report_id IS NOT NULL
+      BEGIN SELECT RAISE(ABORT,'Installed elements require the correction workflow'); END;
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_1_repeated_element_marks");
+  db.exec("PRAGMA foreign_keys = ON");
+}
+const importSourcePayload = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_1_import_source_payload");
+if (!importSourcePayload) {
+  const columns = new Set((db.prepare("PRAGMA table_info(element_register_imports)").all() as {name:string}[]).map((column)=>column.name));
+  if(!columns.has("source_payload_json")) db.exec("ALTER TABLE element_register_imports ADD COLUMN source_payload_json TEXT NOT NULL DEFAULT '{}'");
+  db.exec("UPDATE element_register_imports SET source_payload_json=payload_json WHERE status='Mapping' AND source_payload_json='{}'");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_1_import_source_payload");
+}
+const importApplyLifecycle = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_1_import_apply_lifecycle");
+if (!importApplyLifecycle) {
+  const columns = new Set((db.prepare("PRAGMA table_info(element_register_imports)").all() as {name:string}[]).map((column)=>column.name));
+  if(!columns.has("applied_by_id")) db.exec("ALTER TABLE element_register_imports ADD COLUMN applied_by_id INTEGER");
+  if(!columns.has("applied_by")) db.exec("ALTER TABLE element_register_imports ADD COLUMN applied_by TEXT NOT NULL DEFAULT ''");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_1_import_apply_lifecycle");
+}

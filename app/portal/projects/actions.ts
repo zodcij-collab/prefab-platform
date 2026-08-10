@@ -29,7 +29,8 @@ async function operationsUser() {
 }
 
 function projectInput(data: FormData) {
-  const input = { name:limited(data,"name",160), client:limited(data,"client",160), location:limited(data,"location",240), startDate:value(data,"startDate"), targetDate:value(data,"targetDate"), status:value(data,"status"), managerEmployeeId:value(data,"managerEmployeeId"), description:limited(data,"description",4000) };
+  const coordinate=(key:string,min:number,max:number)=>{const raw=value(data,key);if(!raw)return null;const parsed=Number(raw);if(!Number.isFinite(parsed)||parsed<min||parsed>max)throw new Error("Invalid project coordinates.");return parsed;};
+  const input = { name:limited(data,"name",160), client:limited(data,"client",160), location:limited(data,"location",240), startDate:value(data,"startDate"), targetDate:value(data,"targetDate"), status:value(data,"status"), managerEmployeeId:value(data,"managerEmployeeId"), description:limited(data,"description",4000),latitude:coordinate("latitude",-90,90),longitude:coordinate("longitude",-180,180) };
   if (!input.name || !input.client || !input.location || !input.managerEmployeeId || !PROJECT_STATUSES.includes(input.status)) throw new Error("Invalid project details.");
   if (input.startDate && input.targetDate && input.targetDate < input.startDate) throw new Error("Target completion must be after the start date.");
   return input;
