@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PortalShell,PortalTopbar} from "../../../../../components/portal/PortalShell";
+import {BackLink} from "../../../../../components/portal/BackLink";
 import {MetricCard} from "../../../../../components/portal/MetricCard";
 import {ElementBulkRegister} from "../../../../../components/portal/ElementBulkRegister";
 import {ElementSyncSuccess} from "../../../../../components/portal/ElementSyncSuccess";
@@ -17,6 +18,7 @@ export default async function ElementsPage({params,searchParams}:{params:Promise
   if(!project||!canViewProjectElements(user,id))notFound();
   const filters=await searchParams,language=await getPortalLanguage(),t=(v:string)=>portalText(language,v),all=listProjectElements(id),rows=listProjectElements(id,filters),progress=elementProgress(all),floors=[...new Set(all.map((row)=>row.floor).filter(Boolean))],zones=[...new Set(all.map((row)=>row.zone).filter(Boolean))],canManage=canManageProjectElements(user,id),canOperate=canUpdateElementOperations(user,id);
   return <PortalShell active="/portal/projects">
+    <BackLink href={`/portal/projects/${id}`} label={t("Back to project")}/>
     <PortalTopbar eyebrow={project.name} title={t("Element register")} action={<>{canManage&&<Link className="os-secondary-action" href={`/portal/projects/${id}/elements/import`}>{t("Import CSV")}</Link>}{canManage&&<Link className="os-secondary-action" href={`/portal/projects/${id}/elements/sync`}>{t("Synchronize XLSX")}</Link>}{canManage&&<Link className="os-primary-action" href={`/portal/projects/${id}/elements/new`}>+ {t("Add element")}</Link>}</>}/>
     <ElementSyncSuccess language={language}/>
     <div className="os-project-tabs"><Link href={`/portal/projects/${id}`}>{t("Overview")}</Link><Link className="active" href={`/portal/projects/${id}/elements`}>{t("Element register")}</Link></div>

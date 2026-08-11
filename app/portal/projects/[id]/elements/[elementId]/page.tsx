@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PortalShell,PortalTopbar,StatusBadge} from "../../../../../../components/portal/PortalShell";
+import {BackLink} from "../../../../../../components/portal/BackLink";
 import {requireUser} from "../../../../../../lib/auth";
 import {canCorrectElementInstallation,canManageProjectElements,canViewProjectElements} from "../../../../../../lib/permissions";
 import {getProjectElement,listElementHistory} from "../../../../../../lib/repositories";
@@ -14,6 +15,7 @@ export default async function ElementPage({params}:{params:Promise<{id:string;el
   if(!element||element.projectId!==id||!canViewProjectElements(user,id))notFound();
   const language=await getPortalLanguage(),t=(value:string)=>portalText(language,value),history=listElementHistory(element.id),canManage=canManageProjectElements(user,id);
   return <PortalShell active="/portal/projects">
+    <BackLink href={`/portal/projects/${id}/elements`} label={t("Back to element register")}/>
     <PortalTopbar eyebrow={element.projectName} title={element.code} action={<><StatusBadge status={element.status} label={t(element.status)}/>{canManage&&<Link className="os-secondary-action" href={`/portal/projects/${id}/elements/${element.id}/edit`}>{t("Edit")}</Link>}</>}/>
     <div className="os-project-tabs"><Link href={`/portal/projects/${id}/elements`}>{t("Element register")}</Link><span className="active">{element.code}</span></div>
     <section className="os-project-summary"><div><span>{t("Element type")}</span><strong>{t(element.elementType)}</strong></div><div><span>{t("Floor / level")} · {t("Zone / section")}</span><strong>{element.floor||"—"} · {element.zone||"—"}</strong></div><div><span>{t("Drawing / reference")}</span><strong>{element.drawingRef||"—"}</strong></div></section>

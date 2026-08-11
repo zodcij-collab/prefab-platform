@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {strFromU8,unzipSync} from "fflate";
-import {aggregateOverall,aggregateTimesheets,attendanceCsv,filterTimesheetEntries,suspiciousEntries,timesheetWorkbook,type TimeEntry} from "../lib/timesheets.ts";
+import {aggregateOverall,aggregateTimesheets,attendanceCsv,computeColumnWidths,filterTimesheetEntries,suspiciousEntries,timesheetWorkbook,type TimeEntry} from "../lib/timesheets.ts";
 import {canLinkReportMedia,isAuthorizedExportProject,isTimesheetPeriodEditable} from "../lib/timesheet-policy.ts";
 import {portalText} from "../data/portal-i18n.ts";
 
@@ -25,3 +25,13 @@ test("unauthorized export projects and media linkage are rejected by policy",()=
 test("closed periods reject attendance edits",()=>{assert.equal(isTimesheetPeriodEditable("Open"),true);assert.equal(isTimesheetPeriodEditable("Reviewed"),true);assert.equal(isTimesheetPeriodEditable("Closed"),false);});
 test("suspicious duplicate or high combined hours remain review warnings",()=>{const duplicate=[...entries,{...entries[0],projectId:"p2",projectName:"Other project",regularHours:9,reportId:2}];const warnings=suspiciousEntries(duplicate);assert.equal(warnings.find((warning)=>warning.employeeId==="andris")?.projectCount,2);assert.equal(warnings.find((warning)=>warning.employeeId==="andris")?.totalHours,17);});
 test("Sprint 10.1 labels are localized",()=>{assert.equal(portalText("lv","Sick leave days"),"Slimības dienas");assert.equal(portalText("ru","Photos / Attachments"),"Фотографии / вложения");assert.equal(portalText("lv","Export XLSX"),"Eksportēt XLSX");assert.equal(portalText("lv","Download PDF"),"Lejupielādēt PDF");assert.equal(portalText("ru","Export / Share"),"Экспорт / поделиться");assert.match(portalText("lv","Daily Report e-mail subject"),/^PREFAB\.LV — Dienas atskaite/);assert.match(portalText("ru","PDF downloaded. Attach it manually to the e-mail draft before sending."),/вручную/);assert.match(portalText("lv","Printing was blocked. Open the printable PDF and use the viewer Print control."),/bloķēja/);assert.equal(portalText("lv","Print now"),"Drukāt tagad");assert.equal(portalText("ru","Back to report"),"Назад к отчёту");});
+test("XLSX column widths fit content, never clip headers and stay within sane bounds",()=>{
+  const rows=[["Employee","Attendance status","Comment"],["A very long employee name here","Business trip / other project","short"],["B",8,"a comment that is considerably longer than its header to force a wider column here"]];
+  const widths=computeColumnWidths(rows);
+  assert.equal(widths.length,3);
+  for(let column=0;column<widths.length;column++){const longest=Math.max(...rows.map((row)=>String(row[column]??"").length));assert.ok(widths[column]>=Math.min(48,longest+2)-0.001);assert.ok(widths[column]>=10&&widths[column]<=48);}
+});
+test("generated workbook embeds column widths and a frozen header for readability",()=>{
+  const workbook=timesheetWorkbook(entries);const files=unzipSync(workbook);const sheet=strFromU8(files["xl/worksheets/sheet1.xml"]);
+  assert.match(sheet,/<cols>/);assert.match(sheet,/customWidth="1"/);assert.match(sheet,/state="frozen"/);
+});

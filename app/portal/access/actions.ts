@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "../../../lib/auth";
 import { canManageAccess,ROLES,type Role } from "../../../lib/permissions";
-import { createUserAccess,getUserAccess,getUserAccessByEmail,logActivity,runTransaction,updateUserAccess } from "../../../lib/repositories";
+import { createUserAccess,getProject,getUserAccess,getUserAccessByEmail,logActivity,removeProjectPermission,runTransaction,setProjectPermission,updateUserAccess } from "../../../lib/repositories";
+import { presetCapabilities,type AccessPreset } from "../../../lib/project-access";
 import { hashPassword } from "../../../lib/security";
 
 export type UserFormState={error:string;success:string};
@@ -17,4 +19,18 @@ function message(error:unknown){return error instanceof Error?error.message:"Una
 
 export async function createUserAction(_state:UserFormState,data:FormData):Promise<UserFormState>{const actor=await accessManager();try{const input=commonInput(data);const password=String(data.get("password")??"");validatePassword(password,String(data.get("confirmPassword")??""));runTransaction(()=>{if(getUserAccessByEmail(input.email))throw new Error("A user with this email already exists.");const result=createUserAccess({...input,passwordHash:hashPassword(password)});logActivity({userId:actor.id,actor:actor.name,action:"Created user",entityType:"user",entityId:String(result.lastInsertRowid),details:`${input.name} · ${input.role} · ${input.active?"Active":"Inactive"}`});});revalidatePath("/portal/access");return{error:"",success:`${input.name} was created.`};}catch(error){return{error:message(error),success:""};}}
 
+const ACCESS_PRESETS:AccessPreset[]=["role","read-only","full","none"];
+export async function setUserProjectAccessAction(data:FormData){
+  const actor=await accessManager();
+  const userId=Number(value(data,"userId"));const projectId=value(data,"projectId");const preset=value(data,"preset") as AccessPreset;
+  const target=getUserAccess(userId);const project=getProject(projectId);
+  if(!target||!project)throw new Error("Invalid selection.");
+  if(!ACCESS_PRESETS.includes(preset))throw new Error("Invalid access level.");
+  runTransaction(()=>{
+    if(preset==="role"){removeProjectPermission(userId,projectId);}
+    else{const capabilities=presetCapabilities(preset);if(capabilities)setProjectPermission(userId,projectId,capabilities,actor.id);}
+    logActivity({userId:actor.id,actor:actor.name,action:preset==="role"?"Reset project access to role default":preset==="none"?"Revoked project access":"Set project permissions",entityType:"user",entityId:String(userId),details:`${target.name} · ${project.name} · ${preset}`});
+  });
+  revalidatePath("/portal/access");redirect("/portal/access");
+}
 export async function updateUserAction(_state:UserFormState,data:FormData):Promise<UserFormState>{const actor=await accessManager();try{const id=Number(value(data,"id"));if(!Number.isInteger(id)||id<1)throw new Error("Invalid user.");const existing=getUserAccess(id);if(!existing)throw new Error("User not found.");const input=commonInput(data);if(id===actor.id&&!input.active)throw new Error("You cannot deactivate your own currently authenticated account.");runTransaction(()=>{const duplicate=getUserAccessByEmail(input.email);if(duplicate&&duplicate.id!==id)throw new Error("A user with this email already exists.");updateUserAccess(id,input);const changes:string[]=[];if(existing.name!==input.name)changes.push(`${existing.name} → ${input.name}`);if(existing.email.toLowerCase()!==input.email)changes.push(`${existing.email} → ${input.email}`);if(existing.role!==input.role)changes.push(`Role: ${existing.role} → ${input.role}`);if(Boolean(existing.active)!==Boolean(input.active))changes.push(`Status: ${existing.active?"Active":"Inactive"} → ${input.active?"Active":"Inactive"}`);if(changes.length)logActivity({userId:actor.id,actor:actor.name,action:"Updated user",entityType:"user",entityId:String(id),details:changes.join(" · ")});});revalidatePath("/portal/access");return{error:"",success:`${input.name} was updated.`};}catch(error){return{error:message(error),success:""};}}

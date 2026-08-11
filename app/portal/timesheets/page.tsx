@@ -1,8 +1,9 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PortalShell,PortalTopbar,StatusBadge} from "../../../components/portal/PortalShell";
+import {BackLink} from "../../../components/portal/BackLink";
 import {requireUser} from "../../../lib/auth";
-import {canExportTimesheets,canViewTimesheets,hasGlobalWorkforceAccess,permittedProjectIds} from "../../../lib/permissions";
+import {canExportTimesheets,canViewProjectTimesheets,hasGlobalWorkforceAccess} from "../../../lib/permissions";
 import {getTimesheetPeriod,listAttendance,listEmployees,listProjects,listSuspiciousAttendance} from "../../../lib/repositories";
 import {aggregateOverall,aggregateProjectTimesheets,aggregateTimesheets,filterTimesheetEntries} from "../../../lib/timesheets";
 import {appToday} from "../../../lib/datetime";
@@ -13,16 +14,18 @@ import {updateTimesheetStatusAction} from "./actions";
 const summaryHeaders=["Days worked","Regular hours","Overtime hours","Total hours","Sick leave days","Vacation days","Absent days","Day off days","Business trip / other project days","Other-status days"];
 
 export default async function TimesheetsPage({searchParams}:{searchParams:Promise<{month?:string;year?:string;project?:string;employee?:string}>}){
-  const user=await requireUser();if(!canViewTimesheets(user))notFound();
+  const user=await requireUser();
   const language=await getPortalLanguage(),t=(value:string)=>portalText(language,value),params=await searchParams,today=appToday(),month=params.month??today.slice(5,7),year=params.year??today.slice(0,4),period=`${year}-${month}`;
-  const projects=listProjects(),allowedIds=new Set(permittedProjectIds(user,projects.map((project)=>project.id))),projectId=params.project&&allowedIds.has(params.project)?params.project:"";
+  const projects=listProjects(),allowedIds=new Set(projects.filter((project)=>canViewProjectTimesheets(user,project.id)).map((project)=>project.id));
+  if(allowedIds.size===0)notFound();
+  const projectId=params.project&&allowedIds.has(params.project)?params.project:"";
   const entries=filterTimesheetEntries(listAttendance(period).filter((entry)=>allowedIds.has(entry.projectId)),projectId,params.employee??"");
   const employees=listEmployees().filter((employee)=>entries.some((entry)=>entry.employeeId===employee.id)||employee.project.split(", ").some((name)=>projects.some((project)=>allowedIds.has(project.id)&&project.name===name)));
   const rows=aggregateTimesheets(entries),selectedEmployee=params.employee?employees.find((employee)=>employee.id===params.employee):undefined;
   if(selectedEmployee&&!rows.length)rows.push({employeeId:selectedEmployee.id,employeeName:selectedEmployee.name,position:selectedEmployee.role,projects:selectedEmployee.project==="—"?[]:selectedEmployee.project.split(", "),hasAttendance:false,daysWorked:0,regularHours:0,overtimeHours:0,totalHours:0,sickLeaveDays:0,vacationDays:0,absenceDays:0,dayOffDays:0,businessTripDays:0,otherStatusDays:0});
   const projectTotals=aggregateProjectTimesheets(entries),totals=aggregateOverall(entries),localizedSummaryHeaders=summaryHeaders.map(t),periodState=getTimesheetPeriod(period),warnings=listSuspiciousAttendance(period).filter((warning)=>entries.some((entry)=>entry.employeeId===warning.employeeId&&entry.date===warning.date));
   const query=new URLSearchParams({month,year,...(projectId?{project:projectId}:{}),...(params.employee?{employee:params.employee}:{})});
-  return <PortalShell active="/portal/timesheets"><PortalTopbar eyebrow={t("Accounting input")} title={t("Monthly timesheets")} action={<StatusBadge status={periodState.status} label={t(periodState.status)}/>}/>
+  return <PortalShell active="/portal/timesheets">{projectId&&<BackLink href={`/portal/projects/${projectId}`} label={t("Back to project")}/>}<PortalTopbar eyebrow={t("Accounting input")} title={t("Monthly timesheets")} action={<StatusBadge status={periodState.status} label={t(periodState.status)}/>}/>
     <form className="os-filter-grid" method="get"><label>{t("Month")}<select name="month" defaultValue={month}>{Array.from({length:12},(_,index)=>String(index+1).padStart(2,"0")).map((value)=><option value={value} key={value}>{value}</option>)}</select></label><label>{t("Year")}<input name="year" type="number" min="2020" max="2100" defaultValue={year}/></label><label>{t("Project")}<select name="project" defaultValue={projectId}><option value="">{t("All projects")}</option>{projects.filter((project)=>allowedIds.has(project.id)).map((project)=><option value={project.id} key={project.id}>{project.name}</option>)}</select></label><label>{t("Employee")}<select name="employee" defaultValue={params.employee??""}><option value="">{t("All employees")}</option>{employees.map((employee)=><option value={employee.id} key={employee.id}>{employee.name}</option>)}</select></label><button className="os-secondary-action" type="submit">{t("Filter")}</button>{canExportTimesheets(user)&&<div className="os-export-actions"><Link className="os-secondary-action" href={`/portal/timesheets/export?${query}`}>{t("Export CSV")}</Link><Link className="os-primary-action" href={`/portal/timesheets/export/xlsx?${query}`}>{t("Export XLSX")}</Link></div>}</form>
     {hasGlobalWorkforceAccess(user)&&<form action={updateTimesheetStatusAction} className="os-period-actions"><input type="hidden" name="period" value={period}/><span>{t("Month status")}: <strong>{t(periodState.status)}</strong></span>{["Open","Reviewed","Closed"].filter((status)=>status!==periodState.status).map((status)=><button name="status" value={status} key={status}>{t(`Mark ${status.toLowerCase()}`)}</button>)}</form>}
     {periodState.status==="Closed"&&<p className="os-lock-notice">{t("This month is closed. Daily Report attendance cannot be changed until an authorized administrator reopens it.")}</p>}

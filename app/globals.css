@@ -249,7 +249,23 @@ h3 { font-weight: 760; }
 .os-nav a:hover, .os-nav a.active { color: #fff; background: #1b221e; border-left-color: var(--orange); }
 .os-nav-code { color: #68716b; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
 .os-nav a.active .os-nav-code { color: var(--orange); }
-.os-sidebar-footer { margin-top: auto; display: grid; gap: 15px; padding: 20px 12px 0; border-top: 1px solid #29302c; color: #7f8982; font-size: 11px; }
+.os-nav-lower { margin-top: auto; padding-top: 14px; }
+.os-sidebar-footer { display: grid; gap: 15px; padding: 20px 12px 0; border-top: 1px solid #29302c; color: #7f8982; font-size: 11px; }
+.os-tabs { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid #e3e2dd; }
+.os-tabs a { padding: 9px 14px; font-size: 13px; font-weight: 750; color: #6a6d6a; border-bottom: 2px solid transparent; }
+.os-tabs a.active { color: #202223; border-bottom-color: var(--orange); }
+.os-back-link { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #5a5d5a; margin-bottom: 14px; }
+.os-back-link:hover { color: var(--orange); }
+.os-lifecycle-panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.os-archived-banner { border-left: 3px solid #b26a1f; background: #fdf3e6; color: #7a4c12; padding: 12px 14px; font-size: 13px; margin-bottom: 16px; }
+.os-inline-form { display: inline; }
+.os-form-hint { margin: 8px 0 0; font-size: 12px; color: #6a6d6a; }
+.os-panel-head-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.os-access-editor { display: grid; gap: 8px; margin-top: 10px; }
+.os-access-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.os-access-project { flex: 1 1 160px; font-weight: 700; font-size: 13px; }
+.os-access-row select { min-height: 38px; }
+@media (max-width: 520px) { .os-access-row { flex-direction: column; align-items: stretch; } }
 .os-language-switcher { display:flex; gap:4px; }
 .os-language-switcher button { min-width:30px; min-height:30px; border:1px solid #343c37; background:transparent; color:#8d9790; cursor:pointer; font-size:10px; font-weight:900; }
 .os-language-switcher button.active { border-color:var(--orange); color:var(--orange); }

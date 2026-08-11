@@ -82,45 +82,54 @@ if (!reportColumns.has("approved_at")) db.exec("ALTER TABLE reports ADD COLUMN a
 
 function count(table: string) { return Number((db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c); }
 
+// Demo/sample rows are seeded only on a genuinely fresh database. Once seeding has
+// run (or after an intentional one-time cleanup that records this marker), the demo
+// rows are never re-created — so emptying a table does not resurrect sample data or
+// break foreign keys against deleted demo projects. The admin user seed below is
+// intentionally not guarded so an empty users table always gets an initial account.
+const demoSeeded = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("demo_seed_complete");
+
 if (count("users") === 0) {
   const email = process.env.PREFAB_ADMIN_EMAIL ?? "admin@prefab.lv";
   const password = process.env.PREFAB_ADMIN_PASSWORD ?? "ChangeMe2026!";
   db.prepare("INSERT INTO users (email, name, role, password_hash) VALUES (?, ?, ?, ?)").run(email.toLowerCase(), "Edvards", "Director", hashPassword(password));
 }
-if (count("projects") === 0) {
+if (!demoSeeded && count("projects") === 0) {
   const rows = [["riga-north","Riga North Residential","Rīga, LV","Nordic Development","Active",64,12,"Today · 10:30","Edvards K."],["marupe-logistics","Mārupe Logistics Hub","Mārupe, LV","Baltic Logistics","Active",38,9,"Tomorrow · 08:00","Jānis B."],["tallinn-office","Tallinn Office Campus","Tallinn, EE","Northline Property","Planning",8,0,"18 Aug · TBD","Edvards K."],["kaunas-retail","Kaunas Retail Extension","Kaunas, LT","Retail Baltic","Completed",100,0,"—","Mārtiņš S."]];
   const stmt = db.prepare("INSERT INTO projects (id,name,location,client,status,progress,people_today,next_delivery,manager) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("employees") === 0) {
+if (!demoSeeded && count("employees") === 0) {
   const rows = [["emp-001","Jānis Bērziņš","Foreman","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","First aid"])],["emp-002","Mārtiņš Ozols","Precast installer","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Work at height"])],["emp-003","Artūrs Liepa","Welder","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["EN ISO 9606-1"])],["emp-004","Kārlis Kalniņš","Rigger","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","Signalman"])],["emp-005","Laura Priede","Project coordinator","Tallinn Office Campus","+371 2X XXX XXX","Office","[]"],["emp-006","Andris Krūmiņš","Concrete worker","Riga North Residential","+371 2X XXX XXX","Off",JSON.stringify(["Work at height"])]];
   const stmt = db.prepare("INSERT INTO employees (id, name, role, project, phone, status, certificates) VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("documents") === 0) {
+if (!demoSeeded && count("documents") === 0) {
   const rows = [["doc-001","PF-DVP-001 Work Execution Plan","DVP","Riga North Residential","Rev.0","07 Aug 2026","Current"],["doc-002","Precast Installation Method Statement","DOP","Riga North Residential","Rev.2","06 Aug 2026","Current"],["doc-003","Level 03 Erection Drawing","Drawing","Mārupe Logistics Hub","C","05 Aug 2026","Review"],["doc-004","Risk Assessment — Lifting Operations","HSE","All projects","Rev.1","01 Aug 2026","Current"],["doc-005","Old Delivery Schedule","Schedule","Kaunas Retail Extension","Rev.4","12 Jun 2026","Archived"]];
   const stmt = db.prepare("INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("reports") === 0) {
+if (!demoSeeded && count("reports") === 0) {
   const rows = [["riga-north","Riga North Residential","2026-08-07",12,"Wall panels axes A–C, joint preparation",2,1,"Dry","","Jānis B."],["marupe-logistics","Mārupe Logistics Hub","2026-08-07",9,"Hollow-core slabs, temporary bracing",1,0,"Dry","","Mārtiņš S."],["riga-north","Riga North Residential","2026-08-06",11,"External wall panels, welding",2,0,"Dry","","Jānis B."]];
   const stmt = db.prepare("INSERT INTO reports (project_id, project_name, report_date, people, work, deliveries, issues, weather, notes, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("project_events") === 0) {
+if (!demoSeeded && count("project_events") === 0) {
   const rows = [["riga-north","2026-08-07","08:05","Delivery","Wall panels arrived","Truck 01 received and unloading started","Jānis B."],["riga-north","2026-08-07","10:20","Installation","Axis B completed","Wall panel installation completed and checked","Jānis B."],["riga-north","2026-08-07","11:10","Issue","Temporary brace adjustment","Brace repositioned before next lift","Jānis B."],["marupe-logistics","2026-08-07","08:00","Installation","Hollow-core installation started","Level 02 east wing","Mārtiņš S."],["marupe-logistics","2026-08-07","12:15","Quality","Geometry check","Installed elements checked against erection drawings","Mārtiņš S."],["tallinn-office","2026-08-06","15:30","Planning","Pre-start coordination","Initial lifting sequence reviewed","Edvards K."]];
   const stmt = db.prepare("INSERT INTO project_events (project_id, event_date, event_time, event_type, title, details, author) VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("activity_log") === 0) db.prepare("INSERT INTO activity_log (actor, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)").run("System","Platform initialized","system","prefab-platform","Sprint 5 activity logging enabled");
+if (!demoSeeded && count("activity_log") === 0) db.prepare("INSERT INTO activity_log (actor, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)").run("System","Platform initialized","system","prefab-platform","Sprint 5 activity logging enabled");
 
-if (count("deliveries") === 0) {
+if (!demoSeeded && count("deliveries") === 0) {
   const rows = [["riga-north","2026-08-07","08:00","Precast Factory A","LOAD-017","External wall panels A01–A08","Received","Unloaded in erection order"],["riga-north","2026-08-07","10:30","Precast Factory A","LOAD-018","Internal walls B01–B06","Planned","Direct erection from truck"],["marupe-logistics","2026-08-08","08:00","HC Supplier","HC-044","Hollow-core slabs Level 02","Planned","Crane slot confirmed"]];
   const stmt = db.prepare("INSERT INTO deliveries (project_id, delivery_date, delivery_time, supplier, load_ref, description, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("project_issues") === 0) {
+if (!demoSeeded && count("project_issues") === 0) {
   const rows = [["riga-north","2026-08-07","Installation","Temporary brace adjustment","High","In progress","Jānis B.","Brace position conflicts with access route"],["riga-north","2026-08-06","Quality","Panel edge repair","Normal","Open","Mārtiņš O.","Small transport damage to be repaired before handover"],["marupe-logistics","2026-08-07","Drawing","Embed location query","Normal","Open","Laura P.","Clarification requested from designer"]];
   const stmt = db.prepare("INSERT INTO project_issues (project_id, created_date, category, title, priority, status, owner, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
-if (count("project_photos") === 0) {
+if (!demoSeeded && count("project_photos") === 0) {
   const rows = [["riga-north","2026-08-07","Axis B","Wall panels installed and temporarily braced","photos/riga-north/2026-08-07-axis-b.jpg","Jānis B."],["riga-north","2026-08-07","Delivery zone","LOAD-017 received","photos/riga-north/2026-08-07-load-017.jpg","Jānis B."],["marupe-logistics","2026-08-07","Level 02","Hollow-core erection started","photos/marupe/2026-08-07-level-02.jpg","Mārtiņš S."]];
   const stmt = db.prepare("INSERT INTO project_photos (project_id, photo_date, area, caption, file_ref, author) VALUES (?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
+// Mark demo seeding as settled so it never re-runs on this database.
+db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("demo_seed_complete");
 
 const membershipMigration = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint7_project_members");
 if (!membershipMigration) {
@@ -321,4 +330,27 @@ if (!importApplyLifecycle) {
   if(!columns.has("applied_by_id")) db.exec("ALTER TABLE element_register_imports ADD COLUMN applied_by_id INTEGER");
   if(!columns.has("applied_by")) db.exec("ALTER TABLE element_register_imports ADD COLUMN applied_by TEXT NOT NULL DEFAULT ''");
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_1_import_apply_lifecycle");
+}
+
+const projectAccessLifecycle = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint11_3_project_access_lifecycle");
+if (!projectAccessLifecycle) {
+  const projectLifecycleColumns = new Set((db.prepare("PRAGMA table_info(projects)").all() as {name:string}[]).map((column)=>column.name));
+  if(!projectLifecycleColumns.has("archived_at")) db.exec("ALTER TABLE projects ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''");
+  if(!projectLifecycleColumns.has("archived_by_id")) db.exec("ALTER TABLE projects ADD COLUMN archived_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_permissions (
+      user_id INTEGER NOT NULL,
+      project_id TEXT NOT NULL,
+      capabilities_json TEXT NOT NULL DEFAULT '{}',
+      granted_by_id INTEGER,
+      granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(user_id, project_id),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(granted_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS project_permissions_project_idx ON project_permissions(project_id, user_id);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_3_project_access_lifecycle");
 }

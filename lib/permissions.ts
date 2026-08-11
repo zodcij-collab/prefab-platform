@@ -1,9 +1,15 @@
 import type { SessionUser } from "./auth";
-import { listUserProjectIds } from "./repositories";
-import {ROLES,type Role} from "./roles";
-import {elementRoleCapabilities} from "./elements";
+import { getProject, getProjectPermission, listUserProjectIds } from "./repositories.ts";
+import { ROLES, type Role } from "./roles.ts";
+import {
+  isGlobalRole,
+  resolveProjectCapabilities,
+  type ProjectCapability,
+  type ResolvedCapabilities,
+} from "./project-access.ts";
 
-export {ROLES,type Role} from "./roles";
+export { ROLES, type Role } from "./roles.ts";
+export type { ProjectCapability } from "./project-access.ts";
 
 const rank: Record<Role, number> = {
   Director: 5,
@@ -18,26 +24,93 @@ export function hasRole(user: SessionUser, minimum: Role) {
   return rank[role] >= rank[minimum];
 }
 
+// ---- Global (non-project) capabilities ----
 export function canManageAccess(user: SessionUser) {
-  return user.role === "Director" || user.role === "Administrator";
+  return isGlobalRole(user.role);
 }
-
+export function canConfigureProjectAccess(user: SessionUser) {
+  return isGlobalRole(user.role);
+}
+export function canManageProjectLifecycle(user: SessionUser) {
+  return isGlobalRole(user.role);
+}
 export function canManageProjects(user: SessionUser) {
   return hasRole(user, "Project Manager");
 }
-
 export function canManageProjectOperations(user: SessionUser) {
   return hasRole(user, "Foreman");
 }
+export function hasGlobalWorkforceAccess(user: SessionUser) {
+  return isGlobalRole(user.role);
+}
+export function canManageEmployees(user: SessionUser) {
+  return isGlobalRole(user.role);
+}
+export function canViewTimesheets(user: SessionUser) {
+  return hasGlobalWorkforceAccess(user) || user.role === "Project Manager";
+}
+export function canExportTimesheets(user: SessionUser) {
+  return canViewTimesheets(user);
+}
+export function canReviewDailyReports(user: SessionUser) {
+  return hasGlobalWorkforceAccess(user) || user.role === "Project Manager";
+}
 
-export function hasGlobalWorkforceAccess(user:SessionUser){return user.role==="Director"||user.role==="Administrator";}
-export function canManageEmployees(user:SessionUser){return hasGlobalWorkforceAccess(user);}
-export function canViewTimesheets(user:SessionUser){return hasGlobalWorkforceAccess(user)||user.role==="Project Manager";}
-export function canExportTimesheets(user:SessionUser){return canViewTimesheets(user);}
-export function canReviewDailyReports(user:SessionUser){return hasGlobalWorkforceAccess(user)||user.role==="Project Manager";}
-export function canViewProjectElements(user:SessionUser,projectId:string){return elementRoleCapabilities(user.role).view&&canAccessProject(user,projectId);}
-export function canManageProjectElements(user:SessionUser,projectId:string){return elementRoleCapabilities(user.role).manage&&canAccessProject(user,projectId);}
-export function canUpdateElementOperations(user:SessionUser,projectId:string){return elementRoleCapabilities(user.role).operate&&canAccessProject(user,projectId);}
-export function canCorrectElementInstallation(user:SessionUser,projectId:string){return elementRoleCapabilities(user.role).correct&&canAccessProject(user,projectId);}
-export function canAccessProject(user:SessionUser,projectId:string){return hasGlobalWorkforceAccess(user)||listUserProjectIds(user.id).includes(projectId);}
-export function permittedProjectIds(user:SessionUser,allProjectIds:string[]){return hasGlobalWorkforceAccess(user)?allProjectIds:listUserProjectIds(user.id);}
+// ---- Project-scoped capability resolution ----
+export function projectCapabilities(user: SessionUser, projectId: string): ResolvedCapabilities {
+  const override = getProjectPermission(user.id, projectId);
+  const hasLegacyAccess = isGlobalRole(user.role) ? true : listUserProjectIds(user.id).includes(projectId);
+  return resolveProjectCapabilities({
+    role: user.role,
+    hasOverride: Boolean(override),
+    overrideCapabilities: override?.capabilities,
+    hasLegacyAccess,
+  });
+}
+
+export function canProject(user: SessionUser, projectId: string, capability: ProjectCapability): boolean {
+  return projectCapabilities(user, projectId)[capability] === true;
+}
+
+// A project is accessible when the user has project.view AND (the project is not
+// archived, or the user is a global role that may still view archived projects).
+export function canAccessProject(user: SessionUser, projectId: string): boolean {
+  const project = getProject(projectId);
+  if (!project) return false;
+  if (project.archivedAt && !isGlobalRole(user.role)) return false;
+  return canProject(user, projectId, "project.view");
+}
+
+export function permittedProjectIds(user: SessionUser, allProjectIds: string[]): string[] {
+  return allProjectIds.filter((id) => canAccessProject(user, id));
+}
+
+// Element / report / timesheet / document / workforce checks now delegate to the
+// capability model, so per-project overrides apply everywhere automatically.
+export function canViewProjectElements(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "elements.view");
+}
+export function canManageProjectElements(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "elements.manage");
+}
+export function canUpdateElementOperations(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "elements.operate");
+}
+export function canCorrectElementInstallation(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "elements.manage");
+}
+export function canCreateProjectReports(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "reports.create");
+}
+export function canApproveProjectReports(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "reports.approve");
+}
+export function canViewProjectTimesheets(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "timesheets.view");
+}
+export function canManageProjectDocuments(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "documents.manage");
+}
+export function canManageProjectWorkforce(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "workforce.manage");
+}

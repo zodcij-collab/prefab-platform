@@ -1,7 +1,8 @@
 import { db } from "./db.ts";
 import {deleteDraftReportRecords} from "./report-lifecycle.ts";
+import {sanitizeCapabilityMap,type CapabilityMap} from "./project-access.ts";
 
-export type Project = { id: string; name: string; location: string; client: string; status: string; progress: number; peopleToday: number; nextDelivery: string; manager: string; managerEmployeeId: string | null; startDate: string; targetDate: string; description: string; latitude:number|null; longitude:number|null };
+export type Project = { id: string; name: string; location: string; client: string; status: string; progress: number; peopleToday: number; nextDelivery: string; manager: string; managerEmployeeId: string | null; startDate: string; targetDate: string; description: string; latitude:number|null; longitude:number|null; archivedAt:string; archivedById:number|null };
 export type Employee = { id: string; name: string; firstName: string; lastName: string; role: string; project: string; defaultProjectId: string | null; phone: string; email: string; status: string; employmentStartDate: string; employmentEndDate: string; notes: string; certificates: string[] };
 export type DocumentRow = { id: string; name: string; category: string; project: string; revision: string; updated: string; status: string };
 export type DailyReport = { id: number; projectId: string; project: string; date: string; people: number; work: string; deliveries: number; issues: number; weather: string; notes: string; author: string; reporterUserId: number|null; reporterEmployeeId: string|null; status: string; materials: string; equipment: string; problems: string; safety: string; additionalNotes: string; createdAt: string; updatedAt: string; submittedAt: string; approvedById: number|null; approvedAt: string };
@@ -20,7 +21,7 @@ export type ElementHistory={id:number;elementId:number;fromStatus:string;toStatu
 export type ReportWeather={id:number;reportId:number;timepoint:string;temperature:number|null;conditionCode:number|null;condition:string;precipitation:number|null;windSpeed:number|null;windGust:number|null;provider:string;retrievedAt:string};
 export type ElementImport={id:number;projectId:string;originalFilename:string;sourceRevision:string;sourceHash:string;worksheetName:string;mappingJson:string;payloadJson:string;sourcePayloadJson:string;summaryJson:string;status:string;notes:string;importedById:number|null;importedBy:string;importedAt:string;appliedAt:string;appliedById:number|null;appliedBy:string};
 
-const projectSelect = `SELECT id, name, location, client, status, progress, people_today AS peopleToday, next_delivery AS nextDelivery, manager, manager_employee_id AS managerEmployeeId, start_date AS startDate, target_date AS targetDate, description,latitude,longitude FROM projects`;
+const projectSelect = `SELECT id, name, location, client, status, progress, people_today AS peopleToday, next_delivery AS nextDelivery, manager, manager_employee_id AS managerEmployeeId, start_date AS startDate, target_date AS targetDate, description,latitude,longitude, archived_at AS archivedAt, archived_by_id AS archivedById FROM projects`;
 
 export function listProjects(): Project[] { return db.prepare(`${projectSelect} ORDER BY CASE status WHEN 'Active' THEN 0 WHEN 'Planning' THEN 1 ELSE 2 END, name`).all() as unknown as Project[]; }
 export function getProject(id: string): Project | undefined { return db.prepare(`${projectSelect} WHERE id = ?`).get(id) as Project | undefined; }
@@ -174,6 +175,30 @@ export function applyElementImport(importId:number,projectId:string,sourceRevisi
   const completed=db.prepare("UPDATE element_register_imports SET status='Applied',applied_at=CURRENT_TIMESTAMP,applied_by_id=?,applied_by=? WHERE id=? AND project_id=? AND status='Applying'").run(actor.id,actor.name,importId,projectId);if(completed.changes!==1)throw new Error("Synchronization lifecycle changed during apply.");
 }
 export function bulkUpdateElementStatus(projectId:string,ids:number[],nextStatus:string,operationDate:string,actor:{id:number;name:string}){if(!["Expected","Delivered","On site"].includes(nextStatus))throw new Error("Invalid bulk status.");const unique=[...new Set(ids)];if(unique.length!==ids.length||!unique.length)throw new Error("Invalid element selection.");const rows=unique.map((id)=>getProjectElement(id));if(rows.some((row)=>!row||row.projectId!==projectId))throw new Error("Element project scope mismatch.");let changed=0;for(const row of rows){if(!row||row.status==="Installed"||row.installedReportId!==null||["Issue","Rejected / Hold","Replaced"].includes(row.status))throw new Error("Selected element requires individual review.");if(row.status===nextStatus)continue;db.prepare("UPDATE project_elements SET status=?,actual_delivery_date=CASE WHEN ? IN ('Delivered','On site') AND actual_delivery_date='' THEN ? ELSE actual_delivery_date END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND project_id=? AND status<>'Installed' AND installed_report_id IS NULL").run(nextStatus,nextStatus,operationDate,row.id,projectId);recordElementHistory(row.id,row.status,nextStatus,"",null,actor,"Bulk operational status update");changed++;}return changed;}
+
+export type ProjectPermissionRow={userId:number;projectId:string;capabilities:CapabilityMap;grantedById:number|null;grantedAt:string;updatedAt:string};
+const permissionSelect=`SELECT user_id AS userId,project_id AS projectId,capabilities_json AS capabilitiesJson,granted_by_id AS grantedById,granted_at AS grantedAt,updated_at AS updatedAt FROM project_permissions`;
+function toPermissionRow(row:{userId:number;projectId:string;capabilitiesJson:string;grantedById:number|null;grantedAt:string;updatedAt:string}):ProjectPermissionRow{let capabilities:CapabilityMap={};try{capabilities=sanitizeCapabilityMap(JSON.parse(row.capabilitiesJson||"{}") as Record<string,unknown>);}catch{capabilities={};}return{userId:row.userId,projectId:row.projectId,capabilities,grantedById:row.grantedById,grantedAt:row.grantedAt,updatedAt:row.updatedAt};}
+export function getProjectPermission(userId:number,projectId:string):ProjectPermissionRow|undefined{const row=db.prepare(`${permissionSelect} WHERE user_id=? AND project_id=?`).get(userId,projectId) as Parameters<typeof toPermissionRow>[0]|undefined;return row?toPermissionRow(row):undefined;}
+export function listUserProjectPermissions(userId:number):ProjectPermissionRow[]{return (db.prepare(`${permissionSelect} WHERE user_id=?`).all(userId) as Parameters<typeof toPermissionRow>[0][]).map(toPermissionRow);}
+export function listProjectPermissions(projectId:string):ProjectPermissionRow[]{return (db.prepare(`${permissionSelect} WHERE project_id=?`).all(projectId) as Parameters<typeof toPermissionRow>[0][]).map(toPermissionRow);}
+export function setProjectPermission(userId:number,projectId:string,capabilities:CapabilityMap,grantedById:number){return db.prepare(`INSERT INTO project_permissions(user_id,project_id,capabilities_json,granted_by_id) VALUES(?,?,?,?) ON CONFLICT(user_id,project_id) DO UPDATE SET capabilities_json=excluded.capabilities_json,granted_by_id=excluded.granted_by_id,updated_at=CURRENT_TIMESTAMP`).run(userId,projectId,JSON.stringify(capabilities),grantedById);}
+export function removeProjectPermission(userId:number,projectId:string){return db.prepare("DELETE FROM project_permissions WHERE user_id=? AND project_id=?").run(userId,projectId);}
+export function archiveProject(id:string,userId:number){return db.prepare("UPDATE projects SET archived_at=CURRENT_TIMESTAMP,archived_by_id=? WHERE id=? AND archived_at=''").run(userId,id);}
+export function restoreProject(id:string){return db.prepare("UPDATE projects SET archived_at='',archived_by_id=NULL WHERE id=? AND archived_at<>''").run(id);}
+
+// Employee lifecycle. A hard delete is only safe when no protected history references
+// the employee; otherwise the employee must be archived (status Inactive) instead.
+export function employeeProtectedHistoryCount(id:string):number{
+  const q=(sql:string)=>Number((db.prepare(sql).get(id) as {c:number}).c);
+  return q("SELECT COUNT(*) AS c FROM attendance_entries WHERE employee_id=?")
+    +q("SELECT COUNT(*) AS c FROM employee_project_assignments WHERE employee_id=?")
+    +q("SELECT COUNT(*) AS c FROM reports WHERE reporter_employee_id=?")
+    +q("SELECT COUNT(*) AS c FROM project_members WHERE employee_id=?")
+    +q("SELECT COUNT(*) AS c FROM projects WHERE manager_employee_id=?");
+}
+export function deleteEmployee(id:string){return db.prepare("DELETE FROM employees WHERE id=?").run(id);}
+export function restoreEmployee(id:string){return db.prepare("UPDATE employees SET employment_status='Active',employment_end_date='' WHERE id=?").run(id);}
 
 export function runTransaction<T>(work: () => T): T {
   db.exec("BEGIN IMMEDIATE");

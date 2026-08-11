@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PortalShell,PortalTopbar,StatusBadge} from "../../../../components/portal/PortalShell";
+import {BackLink} from "../../../../components/portal/BackLink";
 import {ReportMediaUploadForm} from "../../../../components/portal/ReportMediaUploadForm";
 import {DailyReportExportMenu} from "../../../../components/portal/DailyReportExportMenu";
 import {ReportApprovalForm} from "../../../../components/portal/ReportApprovalForm";
@@ -27,7 +28,7 @@ export default async function ReportPage({params}:{params:Promise<{id:string}>})
   const canEdit=(report.status==="Draft"&&report.reporterUserId===user.id)||canReviewDailyReports(user);
   const canUpload=canManageProjectOperations(user);
   const canDeleteDraft=report.status==="Draft"&&(canReviewDailyReports(user)||(canManageProjectOperations(user)&&report.reporterUserId===user.id));
-  return <PortalShell active="/portal/reports"><div className="os-report-print">
+  return <PortalShell active="/portal/reports"><BackLink href={`/portal/reports?project=${report.projectId}`} label={t("Back to project reports")}/><div className="os-report-print">
     <PortalTopbar eyebrow={`${report.project} · ${report.date} · #${report.id}`} title={t("Daily report")} action={<>
       <DailyReportExportMenu reportId={report.id} project={report.project} date={report.date} language={language}/>
       <StatusBadge status={report.status} label={t(report.status)}/>
