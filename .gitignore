@@ -11,6 +11,9 @@ storage/uploads/
 .DS_Store
 coverage
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Local PREFAB database
 data/*.db
 data/*.db-shm

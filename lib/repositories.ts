@@ -1,5 +1,5 @@
-import { db } from "./db";
-import {deleteDraftReportRecords} from "./report-lifecycle";
+import { db } from "./db.ts";
+import {deleteDraftReportRecords} from "./report-lifecycle.ts";
 
 export type Project = { id: string; name: string; location: string; client: string; status: string; progress: number; peopleToday: number; nextDelivery: string; manager: string; managerEmployeeId: string | null; startDate: string; targetDate: string; description: string; latitude:number|null; longitude:number|null };
 export type Employee = { id: string; name: string; firstName: string; lastName: string; role: string; project: string; defaultProjectId: string | null; phone: string; email: string; status: string; employmentStartDate: string; employmentEndDate: string; notes: string; certificates: string[] };

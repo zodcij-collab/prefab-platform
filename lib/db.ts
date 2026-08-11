@@ -1,9 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { hashPassword } from "./security";
+import { hashPassword } from "./security.ts";
 
-const dbPath = join(process.cwd(), "data", "prefab.db");
+// Development and production use the fixed data/prefab.db. Tests may point at a
+// disposable database by setting PREFAB_DB_PATH before this module is imported;
+// this keeps migrations and seeding away from the real development database.
+const dbPath = process.env.PREFAB_DB_PATH?.trim() || join(process.cwd(), "data", "prefab.db");
 mkdirSync(dirname(dbPath), { recursive: true });
 const globalForDb = globalThis as unknown as { prefabDb?: DatabaseSync };
 export const db = globalForDb.prefabDb ?? new DatabaseSync(dbPath);
@@ -90,7 +93,7 @@ if (count("projects") === 0) {
 }
 if (count("employees") === 0) {
   const rows = [["emp-001","Jānis Bērziņš","Foreman","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","First aid"])],["emp-002","Mārtiņš Ozols","Precast installer","Riga North Residential","+371 2X XXX XXX","On site",JSON.stringify(["Work at height"])],["emp-003","Artūrs Liepa","Welder","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["EN ISO 9606-1"])],["emp-004","Kārlis Kalniņš","Rigger","Mārupe Logistics Hub","+371 2X XXX XXX","On site",JSON.stringify(["Rigger","Signalman"])],["emp-005","Laura Priede","Project coordinator","Tallinn Office Campus","+371 2X XXX XXX","Office","[]"],["emp-006","Andris Krūmiņš","Concrete worker","Riga North Residential","+371 2X XXX XXX","Off",JSON.stringify(["Work at height"])]];
-  const stmt = db.prepare("INSERT INTO employees VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
+  const stmt = db.prepare("INSERT INTO employees (id, name, role, project, phone, status, certificates) VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const row of rows) stmt.run(...row);
 }
 if (count("documents") === 0) {
   const rows = [["doc-001","PF-DVP-001 Work Execution Plan","DVP","Riga North Residential","Rev.0","07 Aug 2026","Current"],["doc-002","Precast Installation Method Statement","DOP","Riga North Residential","Rev.2","06 Aug 2026","Current"],["doc-003","Level 03 Erection Drawing","Drawing","Mārupe Logistics Hub","C","05 Aug 2026","Review"],["doc-004","Risk Assessment — Lifting Operations","HSE","All projects","Rev.1","01 Aug 2026","Current"],["doc-005","Old Delivery Schedule","Schedule","Kaunas Retail Extension","Rev.4","12 Jun 2026","Archived"]];
