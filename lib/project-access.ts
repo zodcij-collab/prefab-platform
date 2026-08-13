@@ -19,6 +19,7 @@ export const PROJECT_CAPABILITIES = [
   "documents.view", "documents.manage",
   "elements.view", "elements.operate", "elements.manage",
   "workforce.view", "workforce.manage",
+  "loads.view", "loads.manage", "loads.approve_exception",
 ] as const;
 export type ProjectCapability = (typeof PROJECT_CAPABILITIES)[number];
 export type CapabilityMap = Partial<Record<ProjectCapability, boolean>>;
@@ -37,7 +38,7 @@ export const BASE_ROLE_CAPABILITIES: Record<Role, ResolvedCapabilities> = {
   Director: ALL_CAPABILITIES,
   Administrator: ALL_CAPABILITIES,
   "Project Manager": ALL_CAPABILITIES,
-  Foreman: caps(["project.view", "reports.view", "reports.create", "reports.submit", "documents.view", "elements.view", "elements.operate", "workforce.view"]),
+  Foreman: caps(["project.view", "reports.view", "reports.create", "reports.submit", "documents.view", "elements.view", "elements.operate", "workforce.view", "loads.view", "loads.manage"]),
   Employee: caps(["project.view"]),
 };
 
@@ -83,7 +84,7 @@ export type AccessPreset = (typeof ACCESS_PRESETS)[number];
 export function presetCapabilities(preset: AccessPreset): CapabilityMap | null {
   if (preset === "role") return null;
   if (preset === "full") return { ...ALL_CAPABILITIES };
-  if (preset === "read-only") return caps(["project.view", "reports.view", "timesheets.view", "documents.view", "elements.view", "workforce.view"]);
+  if (preset === "read-only") return caps(["project.view", "reports.view", "timesheets.view", "documents.view", "elements.view", "workforce.view", "loads.view"]);
   return caps([]); // "none" — explicit revoke (project.view false)
 }
 

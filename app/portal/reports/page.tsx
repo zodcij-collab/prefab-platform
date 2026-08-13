@@ -15,7 +15,7 @@ export default async function ReportsPage({searchParams}:{searchParams:Promise<{
   const [defaultYear,defaultMonth]=appToday().split("-");
   const backProject=params.project&&projects.some((project)=>project.id===params.project)?params.project:"";
   return <PortalShell active="/portal/reports">
-    {backProject&&<BackLink href={`/portal/projects/${backProject}`} label={t("Back to project")}/>}
+    <BackLink href={backProject?`/portal/projects/${backProject}`:"/portal/projects"} label={backProject?t("Back to project"):t("Back to projects")}/>
     <PortalTopbar eyebrow={t("Site reporting")} title={t("Daily reports")} action={canManageProjectOperations(user)?<Link className="os-primary-action" href="/portal/reports/new">+ {t("New report")}</Link>:undefined}/>
     {params.success&&<p className="os-form-success os-report-success" role="status">{t(params.success==="approved"?"Report saved and approved successfully.":params.success==="submitted"?"Report submitted successfully.":params.success==="deleted"?"Draft report deleted.":"Draft report saved.")}</p>}
     <section className="os-panel os-report-archive-panel">

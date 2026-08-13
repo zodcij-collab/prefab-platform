@@ -3,7 +3,40 @@ export const elementStatuses=["Planned","Expected","Delivered","On site","Instal
 export type ElementType=(typeof elementTypes)[number];
 export type ElementStatus=(typeof elementStatuses)[number];
 export type ElementSummaryInput={id:number;code:string;elementType:string;floor:string;zone:string;status:string};
+// Natural / numeric comparison of element marks so that MARK-9 sorts before MARK-10 and
+// DPP-110-2 before DPP-110-10. One reusable comparator for every physical-element list —
+// splits each mark into alternating text/number runs and compares number runs numerically.
+// Case-insensitive; deterministic (no locale surprises).
+export function compareMarks(a:string,b:string):number{
+  const ax=String(a).toLowerCase().match(/\d+|\D+/g)??[];
+  const bx=String(b).toLowerCase().match(/\d+|\D+/g)??[];
+  const n=Math.min(ax.length,bx.length);
+  for(let i=0;i<n;i++){
+    const as=ax[i],bs=bx[i],aNum=as.charCodeAt(0)<=57&&as.charCodeAt(0)>=48,bNum=bs.charCodeAt(0)<=57&&bs.charCodeAt(0)>=48;
+    if(aNum&&bNum){const d=Number(as)-Number(bs);if(d)return d<0?-1:1;}
+    else if(as!==bs)return as<bs?-1:1;
+  }
+  return ax.length-bx.length;
+}
+// Order physical elements the way a planner reads them: by floor, then zone, then type,
+// then natural mark, with the immutable id as a stable final tiebreak for repeated marks.
+export function compareElementsByMark<T extends {floor:string;zone:string;elementType:string;code:string;id:number}>(a:T,b:T):number{
+  return compareMarks(a.floor,b.floor)||compareMarks(a.zone,b.zone)||(a.elementType<b.elementType?-1:a.elementType>b.elementType?1:0)||compareMarks(a.code,b.code)||a.id-b.id;
+}
+
 export function isInstallableStatus(status:string){return ["Planned","Expected","Delivered","On site"].includes(status);}
+
+// Overall project erection progress display. The calculation keeps full precision; only the
+// LABEL is rounded. Rules: exactly zero installed → "0%"; a positive but sub-1% fraction
+// shows one decimal (e.g. 1/671 → "0.1%") so the UI never implies "nothing installed"; a
+// value that rounds below 0.1% shows "<0.1%"; ≥1% shows a whole percent.
+export function formatProgressLabel(installed:number,total:number):string{
+  if(total<=0||installed<=0)return "0%";
+  const pct=installed/total*100;
+  if(pct>=100)return "100%";
+  if(pct<1){const one=Math.round(pct*10)/10;return one<0.1?"<0.1%":`${one}%`;}
+  return `${Math.round(pct)}%`;
+}
 export function validateInstallationSelection(rows:ElementSummaryInput[],ids:number[]){const unique=[...new Set(ids)],byId=new Map(rows.map((row)=>[row.id,row]));if(unique.length!==ids.length)return{valid:false,error:"Duplicate element selection."};for(const id of unique){const row=byId.get(id);if(!row||!isInstallableStatus(row.status))return{valid:false,error:"Selected element is no longer available for installation."};}return{valid:true,error:""};}
 export function validateBulkOperationalStatus(rows:ElementSummaryInput[],ids:number[],nextStatus:string){if(!["Expected","Delivered","On site"].includes(nextStatus))return{valid:false,error:"Invalid bulk status."};const unique=[...new Set(ids)],byId=new Map(rows.map((row)=>[row.id,row]));if(!unique.length||unique.length!==ids.length)return{valid:false,error:"Invalid element selection."};for(const id of unique){const row=byId.get(id);if(!row||row.status==="Installed"||["Issue","Rejected / Hold","Replaced"].includes(row.status))return{valid:false,error:"Selected element requires individual review."};}return{valid:true,error:""};}
 export function elementRoleCapabilities(role:string){return{view:role!=="Employee",operate:["Foreman","Project Manager","Administrator","Director"].includes(role),manage:["Project Manager","Administrator","Director"].includes(role),correct:["Project Manager","Administrator","Director"].includes(role)};}

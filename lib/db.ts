@@ -354,3 +354,196 @@ if (!projectAccessLifecycle) {
   `);
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint11_3_project_access_lifecycle");
 }
+
+const loadPlanning = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_load_planning");
+if (!loadPlanning) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS transport_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      rank INTEGER NOT NULL DEFAULT 0,
+      max_payload_t REAL,
+      max_length_mm REAL,
+      max_width_mm REAL,
+      max_height_mm REAL,
+      placeholder INTEGER NOT NULL DEFAULT 1,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS loads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      load_number INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      planned_date TEXT NOT NULL DEFAULT '',
+      planned_time TEXT NOT NULL DEFAULT '',
+      transport_profile_id INTEGER,
+      recommended_profile_id INTEGER,
+      loading_direction TEXT NOT NULL DEFAULT 'forward',
+      orientation_note TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      exception_ack INTEGER NOT NULL DEFAULT 0,
+      exception_ack_by_id INTEGER,
+      exception_ack_at TEXT NOT NULL DEFAULT '',
+      exception_reason TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(transport_profile_id) REFERENCES transport_profiles(id) ON DELETE SET NULL,
+      FOREIGN KEY(recommended_profile_id) REFERENCES transport_profiles(id) ON DELETE SET NULL,
+      FOREIGN KEY(created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY(exception_ack_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS load_elements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      load_id INTEGER NOT NULL,
+      element_id INTEGER NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      orientation TEXT NOT NULL DEFAULT 'Vertical',
+      intent TEXT NOT NULL DEFAULT 'Direct erection',
+      note TEXT NOT NULL DEFAULT '',
+      active_alloc INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(load_id, element_id),
+      FOREIGN KEY(load_id) REFERENCES loads(id) ON DELETE CASCADE,
+      FOREIGN KEY(element_id) REFERENCES project_elements(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS loads_project_idx ON loads(project_id, status, planned_date, planned_time, load_number);
+    CREATE UNIQUE INDEX IF NOT EXISTS loads_active_number_unique ON loads(project_id, load_number) WHERE status <> 'Cancelled';
+    CREATE INDEX IF NOT EXISTS load_elements_load_idx ON load_elements(load_id, position);
+    CREATE INDEX IF NOT EXISTS load_elements_element_idx ON load_elements(element_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS load_elements_active_alloc_unique ON load_elements(element_id) WHERE active_alloc = 1;
+    CREATE UNIQUE INDEX IF NOT EXISTS transport_profiles_name_unique ON transport_profiles(name);
+  `);
+  // Seed clearly-labelled PLACEHOLDER transport profiles. Their limits are NOT
+  // certified carrier data — the carrier must confirm real values before use.
+  // INSERT OR IGNORE + the unique name index makes this safe under concurrent init.
+  // max_height_mm = CONFIRMED maximum vertical element height (PREFAB.LV logistics).
+  // Payload / length / width are still placeholders pending carrier confirmation.
+  const note = "Vertical element-height limit confirmed. Payload / length / width require carrier confirmation.";
+  const stmt = db.prepare("INSERT OR IGNORE INTO transport_profiles (name,active,rank,max_payload_t,max_length_mm,max_width_mm,max_height_mm,placeholder,note) VALUES (?,1,?,?,?,?,?,1,?)");
+  stmt.run("Standard", 1, 24.0, 13600, 2550, 3100, note);
+  stmt.run("Jumbo", 2, 24.0, 16000, 2550, 3450, note);
+  stmt.run("Titanic", 3, 24.0, 21000, 3000, 4100, note);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_load_planning");
+}
+
+// Corrective migration: an earlier build seeded placeholder profiles from several
+// concurrent worker processes before the name index existed, so a database may hold
+// duplicate transport profiles. Repoint any load references to the lowest-id profile
+// of each name, remove the duplicates, and enforce the unique name index. Idempotent.
+const transportProfilesUnique = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_transport_profiles_unique");
+if (!transportProfilesUnique) {
+  db.exec(`
+    UPDATE loads SET transport_profile_id=(SELECT MIN(tp2.id) FROM transport_profiles tp2 JOIN transport_profiles tp1 ON tp1.name=tp2.name WHERE tp1.id=loads.transport_profile_id) WHERE transport_profile_id IS NOT NULL;
+    UPDATE loads SET recommended_profile_id=(SELECT MIN(tp2.id) FROM transport_profiles tp2 JOIN transport_profiles tp1 ON tp1.name=tp2.name WHERE tp1.id=loads.recommended_profile_id) WHERE recommended_profile_id IS NOT NULL;
+    DELETE FROM transport_profiles WHERE id NOT IN (SELECT MIN(id) FROM transport_profiles GROUP BY name);
+    CREATE UNIQUE INDEX IF NOT EXISTS transport_profiles_name_unique ON transport_profiles(name);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_transport_profiles_unique");
+}
+
+// PREFAB.LV logistics confirmed the maximum VERTICAL element-height limits per profile.
+// Update the seeded placeholder profiles to the confirmed heights (payload/length/width
+// remain placeholders). Only touches the three seeded placeholder profiles. Idempotent.
+const confirmedHeights = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_confirmed_transport_heights");
+if (!confirmedHeights) {
+  const note = "Vertical element-height limit confirmed. Payload / length / width require carrier confirmation.";
+  const upd = db.prepare("UPDATE transport_profiles SET max_height_mm=?, note=?, updated_at=CURRENT_TIMESTAMP WHERE name=? AND placeholder=1");
+  upd.run(3100, note, "Standard");
+  upd.run(3450, note, "Jumbo");
+  upd.run(4100, note, "Titanic");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_confirmed_transport_heights");
+}
+
+// Sprint 12 Improvement Pack — project-scoped Installation Zones. Operational grouping
+// of physical elements for erection planning, kept separate from the design `zone`
+// (drawing section) so an XLSX re-sync never overwrites it. The zone is a nullable
+// reference on the immutable project_elements.id; deleting a zone only clears the link.
+const installationZones = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_installation_zones");
+if (!installationZones) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS installation_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS installation_zones_name_unique ON installation_zones(project_id, name);
+    CREATE INDEX IF NOT EXISTS installation_zones_project_idx ON installation_zones(project_id, sort_order, name);
+  `);
+  const elementZoneColumns = new Set((db.prepare("PRAGMA table_info(project_elements)").all() as {name:string}[]).map((column)=>column.name));
+  if(!elementZoneColumns.has("installation_zone_id")) db.exec("ALTER TABLE project_elements ADD COLUMN installation_zone_id INTEGER");
+  db.exec("CREATE INDEX IF NOT EXISTS project_elements_install_zone_idx ON project_elements(installation_zone_id)");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_installation_zones");
+}
+
+// Sprint 12 Improvement Pack — weekend delivery acknowledgement. A load planned for a
+// Saturday/Sunday delivery must carry an explicit, persisted acknowledgement.
+const loadWeekendAck = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_load_weekend_ack");
+if (!loadWeekendAck) {
+  const loadColumns = new Set((db.prepare("PRAGMA table_info(loads)").all() as {name:string}[]).map((column)=>column.name));
+  if(!loadColumns.has("weekend_ack")) db.exec("ALTER TABLE loads ADD COLUMN weekend_ack INTEGER NOT NULL DEFAULT 0");
+  if(!loadColumns.has("weekend_ack_by_id")) db.exec("ALTER TABLE loads ADD COLUMN weekend_ack_by_id INTEGER");
+  if(!loadColumns.has("weekend_ack_at")) db.exec("ALTER TABLE loads ADD COLUMN weekend_ack_at TEXT NOT NULL DEFAULT ''");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_load_weekend_ack");
+}
+
+// Sprint 12 Improvement Pack — Load → Delivery → Installation lifecycle. A Planned load
+// can be "received" (accepted), either as planned or with discrepancies. Acceptance is
+// recorded in an append-only receipt (load_receipts + load_receipt_elements) capturing
+// the ACTUAL received composition (received / missing / added) against the plan. Missing
+// elements are released for re-planning; added elements reference real project_elements.
+// Installation progress is DERIVED from element status against this actual composition.
+const loadDelivery = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint12_load_delivery");
+if (!loadDelivery) {
+  const loadColumns = new Set((db.prepare("PRAGMA table_info(loads)").all() as {name:string}[]).map((column)=>column.name));
+  if(!loadColumns.has("acceptance_type")) db.exec("ALTER TABLE loads ADD COLUMN acceptance_type TEXT NOT NULL DEFAULT ''");
+  if(!loadColumns.has("accepted_at")) db.exec("ALTER TABLE loads ADD COLUMN accepted_at TEXT NOT NULL DEFAULT ''");
+  if(!loadColumns.has("accepted_by_id")) db.exec("ALTER TABLE loads ADD COLUMN accepted_by_id INTEGER");
+  if(!loadColumns.has("accepted_by")) db.exec("ALTER TABLE loads ADD COLUMN accepted_by TEXT NOT NULL DEFAULT ''");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS load_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      load_id INTEGER NOT NULL,
+      project_id TEXT NOT NULL,
+      acceptance_type TEXT NOT NULL,
+      comment TEXT NOT NULL DEFAULT '',
+      received_count INTEGER NOT NULL DEFAULT 0,
+      missing_count INTEGER NOT NULL DEFAULT 0,
+      added_count INTEGER NOT NULL DEFAULT 0,
+      accepted_by_id INTEGER,
+      accepted_by TEXT NOT NULL DEFAULT '',
+      accepted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(load_id) REFERENCES loads(id) ON DELETE CASCADE,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(accepted_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS load_receipt_elements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      receipt_id INTEGER NOT NULL,
+      load_id INTEGER NOT NULL,
+      element_id INTEGER NOT NULL,
+      disposition TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(receipt_id) REFERENCES load_receipts(id) ON DELETE CASCADE,
+      FOREIGN KEY(load_id) REFERENCES loads(id) ON DELETE CASCADE,
+      FOREIGN KEY(element_id) REFERENCES project_elements(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS load_receipts_load_idx ON load_receipts(load_id);
+    CREATE INDEX IF NOT EXISTS load_receipt_elements_receipt_idx ON load_receipt_elements(receipt_id);
+    CREATE INDEX IF NOT EXISTS load_receipt_elements_element_idx ON load_receipt_elements(element_id);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_load_delivery");
+}

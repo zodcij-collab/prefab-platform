@@ -114,3 +114,12 @@ export function canManageProjectDocuments(user: SessionUser, projectId: string) 
 export function canManageProjectWorkforce(user: SessionUser, projectId: string) {
   return canAccessProject(user, projectId) && canProject(user, projectId, "workforce.manage");
 }
+export function canViewProjectLoads(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "loads.view");
+}
+export function canManageProjectLoads(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "loads.manage");
+}
+export function canApproveLoadException(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "loads.approve_exception");
+}
