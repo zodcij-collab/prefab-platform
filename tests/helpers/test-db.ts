@@ -19,6 +19,7 @@ export async function setupTestDb() {
   process.env.PREFAB_DB_PATH = join(dir, "test.db");
   const dbModule = await import("../../lib/db.ts");
   const repo = await import("../../lib/repositories.ts");
+  const issues = await import("../../lib/issues-repo.ts");
   const cleanup = () => {
     try {
       dbModule.db.close();
@@ -33,7 +34,7 @@ export async function setupTestDb() {
       // best-effort cleanup of a temp directory
     }
   };
-  return { dir, db: dbModule.db, repo, cleanup };
+  return { dir, db: dbModule.db, repo, issues, cleanup };
 }
 
 export type TestDb = Awaited<ReturnType<typeof setupTestDb>>;

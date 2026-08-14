@@ -10,8 +10,12 @@ when an invariant or procedure genuinely changes.
 
 ---
 
-## CURRENT STATE — Sprint 12 under manual acceptance (checkpoint 2026-08-12)
+## CURRENT STATE — Sprint 13 DESKTOP-ACCEPTED (checkpoint 2026-08-14)
 
+- **Sprint 12 is ACCEPTED and merged to `main`** (commit `6b7e5b3`, "add load planning delivery lifecycle and installation zones").
+- **Sprint 13 (Site Capture, Issues / Tasks / Defects, Requires Attention): DESKTOP MANUAL ACCEPTANCE = COMPLETE (Edvard, 2026-08-14).** **Mobile / real-device acceptance = PENDING an externally reachable STAGING environment** (deferred, not a blocker to closing Sprint 13). Being committed to `sprint-13-site-issues` and fast-forward merged to `main` at closure. One project-scoped issue domain: additive `issues` + `issue_media` + `issue_events` tables (migration `sprint13_site_issues`); pure domain `lib/issues.ts` (types/priorities/lifecycle/overdue/attention + pending-media helpers), DB `lib/issues-repo.ts`, actions `app/portal/projects/[id]/issues/actions.ts`, mobile-first pages (`…/issues`, `…/issues/new` quick capture, `…/issues/[issueId]`), media served from `app/portal/files/issue-media/[id]`, Issue PDF (`lib/issue-pdf.ts` + `…/issues/[issueId]/pdf`, `?inline=1` for Print). Two-stage flow: quick capture (`Captured`, `classified=0`, Defect/Task intent) → classify in place (never a second record; controlled form, in-place revalidation so sibling actions don't wipe unsaved input). Attachments: image + short video + **PDF** (`lib/storage.ts` `issues` area, magic-byte validated; PDFs referenced textually in the export, never embedded). Capabilities `issues.view/capture/manage/comment` (Foreman defaults include all four). **Requires Attention** is DERIVED (no attention table), role-scoped, and surfaced per-project on Overview and as a **portfolio summary on the Projects page** via the shared `projectAttentionSummary` service (deep-links `?scope=open` / `?attention=overdue` / `?priority=Critical`). User-facing terminology: EN "Issues & Tasks" / LV "Defekti un uzdevumi" / RU "Дефекты и задачи"; capture is neutral "New capture". Legacy `project_issues` had **0 pilot rows** — its Overview UI was replaced; the legacy table/data are left intact. Drawing columns (`document_id`, `drawing_page/x/y`) reserved for Sprint 14 — no viewer built. `npm test` = **200 passing**. Latest backup: `C:\Projects\prefab-platform\backups\pilot-2026-08-13T13-53-45-115Z\`.
+
+<!-- Sprint 12 history retained below. -->
 - **Sprint 12 (Load Planning & Delivery Schedule) + its Acceptance Fix Pack are IMPLEMENTED but NOT accepted and NOT committed.** They live as **uncommitted working-tree changes** on branch `sprint-12-load-planning` (committed baseline `HEAD = a4858e6…`, "finalize project access lifecycle and pilot readiness"). All Sprint 12 code is on disk (see `app/portal/projects/[id]/loads/`, `components/portal/LoadEditor.tsx`, `lib/loads.ts`, `lib/load-schedule-pdf.ts`, `tests/loads*.test.ts`).
 - **Edvard is currently performing manual acceptance.** **Do NOT start any new development, and do NOT commit or push, until Edvard explicitly accepts.** Roles: **Claude implements code; Codex analyzes requirements, reviews, and accepts.**
 - **Pilot database `data/prefab.db` holds REAL pilot data** — project `skaistkalnes-iela-1a` (671 elements, IDs 682–1352), 9 project documents, 5 employees — plus **live acceptance loads** (as of this checkpoint: Load 1 = a labelled QA load "safe to cancel/delete"; Load 2 = a real load Edvard built during acceptance). **Never reset, reseed, or destructively modify it.** External backup: `C:\Projects\prefab-platform\backups\pilot-2026-08-12T13-54-56-789Z\`.
@@ -126,3 +130,16 @@ compatibility fields unless the task explicitly requires it.
   `loads` domain; general material logistics lives in the legacy `deliveries` table. Do not
   merge them. Project Overview surfaces both under one "Logistics" heading as two labelled
   subsections (Element deliveries / Material deliveries).
+- **Public Website ↔ Portal aggregate-data integration (Infrastructure Phase 1 backlog).** The
+  public PREFAB.LV website portal-summary block currently shows fallback dashes instead of live
+  aggregate data from the platform. This is **not** a Sprint 13 issue — handle it in **PREFAB.LV
+  Production Infrastructure — Phase 1**, together with the staging/production environment where
+  the Public Website ↔ Portal integration is wired. Real-device / mobile acceptance of Sprint 13
+  is deferred to the same staging environment.
+- **Issue "Send by email" (future, NOT implemented).** The Issue/Defect PDF
+  (`/portal/projects/[id]/issues/[issueId]/pdf`, `lib/issue-pdf.ts`) is the record document
+  and is already suitable as an email attachment — a future "Send by email" action should
+  reuse the same generated PDF (do not regenerate a different document). Deferred parts: an
+  SMTP/provider integration (SendGrid/Graph/etc.), recipient selection, and delivery/audit.
+  No mail credentials or provider are wired in Sprint 13. No disabled placeholder button was
+  added (to avoid clutter) — activate it in the sprint that adds real delivery.

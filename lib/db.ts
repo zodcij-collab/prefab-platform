@@ -547,3 +547,87 @@ if (!loadDelivery) {
   `);
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint12_load_delivery");
 }
+
+// Sprint 13 — Site Capture, Tasks / Issues / Defects. One project-scoped issue entity of
+// several operational types, with a two-stage lifecycle (quick capture → classification),
+// append-only history/comments, and evidence/resolution media. Optional relations to an
+// Installation Zone and a physical element (by immutable id). Drawing columns are reserved
+// for Sprint 14 (viewer/markers not built now). Additive + idempotent.
+const siteIssues = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint13_site_issues");
+if (!siteIssues) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      issue_number INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'Issue',
+      title TEXT NOT NULL DEFAULT '',
+      details TEXT NOT NULL DEFAULT '',
+      priority TEXT NOT NULL DEFAULT 'Normal',
+      status TEXT NOT NULL DEFAULT 'Captured',
+      classified INTEGER NOT NULL DEFAULT 0,
+      installation_zone_id INTEGER,
+      element_id INTEGER,
+      document_id INTEGER,
+      drawing_page INTEGER,
+      drawing_x REAL,
+      drawing_y REAL,
+      assigned_to_id TEXT,
+      assigned_to TEXT NOT NULL DEFAULT '',
+      due_date TEXT NOT NULL DEFAULT '',
+      resolution TEXT NOT NULL DEFAULT '',
+      resolved_at TEXT NOT NULL DEFAULT '',
+      resolved_by_id INTEGER,
+      resolved_by TEXT NOT NULL DEFAULT '',
+      closed_at TEXT NOT NULL DEFAULT '',
+      closed_by_id INTEGER,
+      closed_by TEXT NOT NULL DEFAULT '',
+      cancel_reason TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+      FOREIGN KEY(installation_zone_id) REFERENCES installation_zones(id) ON DELETE SET NULL,
+      FOREIGN KEY(element_id) REFERENCES project_elements(id) ON DELETE SET NULL,
+      FOREIGN KEY(document_id) REFERENCES project_documents(id) ON DELETE SET NULL,
+      FOREIGN KEY(assigned_to_id) REFERENCES employees(id) ON DELETE SET NULL,
+      FOREIGN KEY(created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY(resolved_by_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY(closed_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS issues_number_unique ON issues(project_id, issue_number);
+    CREATE INDEX IF NOT EXISTS issues_project_idx ON issues(project_id, status, priority, due_date);
+    CREATE INDEX IF NOT EXISTS issues_assigned_idx ON issues(project_id, assigned_to_id);
+    CREATE TABLE IF NOT EXISTS issue_media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      issue_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'evidence',
+      kind TEXT NOT NULL DEFAULT 'image',
+      original_filename TEXT NOT NULL DEFAULT '',
+      stored_path TEXT NOT NULL UNIQUE,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT NOT NULL DEFAULT '',
+      caption TEXT NOT NULL DEFAULT '',
+      uploaded_by_id INTEGER,
+      uploaded_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(issue_id) REFERENCES issues(id) ON DELETE CASCADE,
+      FOREIGN KEY(uploaded_by_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS issue_media_issue_idx ON issue_media(issue_id);
+    CREATE TABLE IF NOT EXISTS issue_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      issue_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      actor_user_id INTEGER,
+      actor TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(issue_id) REFERENCES issues(id) ON DELETE CASCADE,
+      FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS issue_events_issue_idx ON issue_events(issue_id, created_at);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint13_site_issues");
+}
