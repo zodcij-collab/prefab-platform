@@ -78,6 +78,73 @@ export function nextIssueNumber(existingNumbers: number[]): number {
   return existingNumbers.reduce((max, n) => Math.max(max, n), 0) + 1;
 }
 
+// ── Sprint 14: drawing markers ──────────────────────────────────────
+// Markers are stored as a page number + normalized coordinates (0..1) relative to the
+// rendered PDF page, so a marker sits in the same physical drawing location on any device,
+// viewport, zoom, or fit mode. Never store or trust screen pixels.
+export function isValidMarker(page: unknown, x: unknown, y: unknown): boolean {
+  return Number.isInteger(page) && (page as number) >= 1
+    && typeof x === "number" && Number.isFinite(x) && (x as number) >= 0 && (x as number) <= 1
+    && typeof y === "number" && Number.isFinite(y) && (y as number) >= 0 && (y as number) <= 1;
+}
+// Clamp a normalized value into [0,1] defensively (a tap right at the page edge).
+export function clampUnit(value: number): number { return value < 0 ? 0 : value > 1 ? 1 : value; }
+
+export type MarkerAppearance = "critical" | "open" | "subdued" | "hidden";
+// V1 marker semantics (restrained, construction-oriented — not a GIS map):
+// cancelled → hidden; resolved/closed → subdued; open + Critical → emphasised; else standard.
+export function markerAppearance(issue: { status: string; priority: string }): MarkerAppearance {
+  if (issue.status === "Cancelled") return "hidden";
+  if (issue.status === "Resolved" || issue.status === "Closed") return "subdued";
+  if (issue.priority === "Critical") return "critical";
+  return "open";
+}
+
+export const MARKER_FILTERS = ["active", "defects", "tasks", "critical", "resolved", "all"] as const;
+export type MarkerFilter = (typeof MARKER_FILTERS)[number];
+// The small practical overlay filter. "active" (default) hides terminal issues; "resolved"
+// shows only Resolved/Closed. "all" shows every marker record — including Cancelled, which is
+// rendered subdued (never as active). In every mode other than "all", Cancelled is hidden.
+export function markerPassesFilter(issue: { status: string; type: string; priority: string }, filter: MarkerFilter): boolean {
+  if (filter === "all") return true;
+  if (issue.status === "Cancelled") return false;
+  const active = OPEN_STATUSES.includes(issue.status as IssueStatus);
+  switch (filter) {
+    case "active": return active;
+    case "defects": return active && issue.type !== "Task";
+    case "tasks": return active && issue.type === "Task";
+    case "critical": return active && issue.priority === "Critical";
+    case "resolved": return issue.status === "Resolved" || issue.status === "Closed";
+    default: return active;
+  }
+}
+
+// Contextual drawing "Back" target (explicit, project-scoped, refresh/bookmark-safe return
+// contract): when the viewer was entered from an issue (Show/Set location on drawing) the
+// validated return issue routes Back to that exact issue; entering from Project → Drawings (no
+// return issue) routes Back to the drawings list. Derived from state, never browser history.
+export function drawingBackHref(projectId: string, returnIssueId: number | null | undefined): string {
+  return returnIssueId ? `/portal/projects/${projectId}/issues/${returnIssueId}` : `/portal/projects/${projectId}/drawings`;
+}
+
+// A human-friendly, testable relative position for a normalized marker (0..1), used in the
+// Issue PDF instead of raw coordinates. Nine stable zone keys (translated via portalText);
+// derived by thirds. This never exposes the raw x/y numbers to the recipient.
+export const MARKER_ZONE_KEYS = [
+  "top-left", "top-center", "top-right",
+  "mid-left", "center", "mid-right",
+  "bottom-left", "bottom-center", "bottom-right",
+] as const;
+export type MarkerZone = (typeof MARKER_ZONE_KEYS)[number];
+export function markerZoneKey(x: number, y: number): MarkerZone {
+  const band = (v: number) => (v < 1 / 3 ? 0 : v < 2 / 3 ? 1 : 2);
+  const rows = ["top", "mid", "bottom"] as const;
+  const cols = ["left", "center", "right"] as const;
+  const row = rows[band(clampUnit(y))], col = cols[band(clampUnit(x))];
+  if (row === "mid" && col === "center") return "center";
+  return `${row}-${col}` as MarkerZone;
+}
+
 // Pending-media selection helpers for the quick-capture form. The client keeps its own file
 // list (a native <input> can't remove one file), reflecting it back into the input via
 // DataTransfer so the submitted payload always matches what the user sees.

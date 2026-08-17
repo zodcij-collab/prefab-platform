@@ -219,10 +219,107 @@ const sprint13Text:Record<PortalLanguage,Record<string,string>>={
   }
 };
 
+// Sprint 14 — Drawings, site markers & issue/drawing integration.
+const sprint14Text:Record<PortalLanguage,Record<string,string>>={
+  en:{},
+  lv:{
+    "Drawings":"Rasējumi","Drawing":"Rasējums","Back to drawings":"Atpakaļ uz rasējumiem","Back to drawing":"Atpakaļ uz rasējumu","Rev.":"Red.",
+    "Open a PDF drawing to view site markers or place a new one on the exact location.":"Atveriet PDF rasējumu, lai skatītu objekta marķierus vai novietotu jaunu precīzā vietā.","No PDF drawings uploaded yet. Upload PDF drawings in project Documents.":"Vēl nav augšupielādētu PDF rasējumu. Augšupielādējiet PDF rasējumus projekta dokumentos.",
+    "Loading drawing…":"Ielādē rasējumu…","This drawing could not be displayed.":"Šo rasējumu nevarēja parādīt.","Previous page":"Iepriekšējā lapa","Next page":"Nākamā lapa","Zoom in":"Tuvināt","Zoom out":"Tālināt","Fit":"Ietilpināt","Fit page":"Ietilpināt lapu","Filter markers":"Filtrēt marķierus",
+    "Active":"Aktīvie","Defects":"Defekti","Tasks":"Uzdevumi","Resolved/Closed":"Atrisināti/slēgti",
+    "Place marker":"Novietot marķieri","Placing… tap the drawing":"Novieto… pieskaries rasējumam","Tap the exact location for":"Pieskaries precīzai vietai priekš","Marker placed. Confirm or tap again to reposition.":"Marķieris novietots. Apstipriniet vai pieskarieties vēlreiz, lai pārvietotu.","Save location":"Saglabāt atrašanās vietu","Create Defect":"Izveidot defektu","Create Task":"Izveidot uzdevumu","Place marker enables tap-to-create. Pinch or the +/− controls zoom; drag to pan.":"“Novietot marķieri” ļauj izveidot ar pieskārienu. Tuviniet ar žestu vai +/− pogām; velciet, lai pārvietotu.",
+    "Show on drawing":"Rādīt rasējumā","Move on drawing":"Pārvietot rasējumā","Remove location":"Noņemt atrašanās vietu","Set location on drawing":"Norādīt vietu rasējumā","On drawing":"Rasējumā","Drawing location":"Atrašanās vieta rasējumā","Close":"Aizvērt",
+    "Marker added":"Pievienots marķieris","Marker moved":"Pārvietots marķieris","Marker removed":"Noņemts marķieris"
+  },
+  ru:{
+    "Drawings":"Чертежи","Drawing":"Чертёж","Back to drawings":"Назад к чертежам","Back to drawing":"Назад к чертежу","Rev.":"Ред.",
+    "Open a PDF drawing to view site markers or place a new one on the exact location.":"Откройте PDF-чертёж, чтобы посмотреть метки на объекте или поставить новую в точном месте.","No PDF drawings uploaded yet. Upload PDF drawings in project Documents.":"PDF-чертежи ещё не загружены. Загрузите PDF-чертежи в документах проекта.",
+    "Loading drawing…":"Загрузка чертежа…","This drawing could not be displayed.":"Не удалось отобразить этот чертёж.","Previous page":"Предыдущая страница","Next page":"Следующая страница","Zoom in":"Приблизить","Zoom out":"Отдалить","Fit":"Вписать","Fit page":"Вписать страницу","Filter markers":"Фильтр меток",
+    "Active":"Активные","Defects":"Дефекты","Tasks":"Задачи","Resolved/Closed":"Решённые/закрытые",
+    "Place marker":"Поставить метку","Placing… tap the drawing":"Размещение… коснитесь чертежа","Tap the exact location for":"Коснитесь точного места для","Marker placed. Confirm or tap again to reposition.":"Метка поставлена. Подтвердите или коснитесь ещё раз, чтобы переместить.","Save location":"Сохранить расположение","Create Defect":"Создать дефект","Create Task":"Создать задачу","Place marker enables tap-to-create. Pinch or the +/− controls zoom; drag to pan.":"«Поставить метку» включает создание касанием. Масштаб — жестом или кнопками +/−; перетаскивайте для панорамы.",
+    "Show on drawing":"Показать на чертеже","Move on drawing":"Переместить на чертеже","Remove location":"Удалить расположение","Set location on drawing":"Указать место на чертеже","On drawing":"На чертеже","Drawing location":"Расположение на чертеже","Close":"Закрыть",
+    "Marker added":"Метка добавлена","Marker moved":"Метка перемещена","Marker removed":"Метка удалена"
+  }
+};
+
+// Sprint 14 acceptance fix pack: the "All" marker filter, the human-readable drawing position
+// used in the Issue PDF (never raw coordinates), contextual back, and a full Access & Roles
+// localization audit (page + user forms + project-access editor + the new user lifecycle).
+// Distinct keys ("Account active"/"Account inactive") avoid colliding with the marker-filter
+// "Active"/"Inactive". Wired FIRST so these win over any earlier partial entries.
+const fixpack14Text: Record<PortalLanguage, Record<string, string>> = {
+  en: {
+    "top-left": "Upper-left", "top-center": "Upper-centre", "top-right": "Upper-right",
+    "mid-left": "Mid-left", "center": "Centre", "mid-right": "Mid-right",
+    "bottom-left": "Lower-left", "bottom-center": "Lower-centre", "bottom-right": "Lower-right",
+    "Account active": "Active", "Account inactive": "Inactive",
+  },
+  lv: {
+    "All": "Visi", "Back to issue": "Atpakaļ uz problēmu", "Approx. position": "Aptuvenā vieta",
+    "top-left": "Augšā pa kreisi", "top-center": "Augšā vidū", "top-right": "Augšā pa labi",
+    "mid-left": "Vidū pa kreisi", "center": "Centrā", "mid-right": "Vidū pa labi",
+    "bottom-left": "Apakšā pa kreisi", "bottom-center": "Apakšā vidū", "bottom-right": "Apakšā pa labi",
+    "Access & roles": "Piekļuve un lomas", "Administration": "Administrācija", "Restricted": "Ierobežots",
+    "Your role does not allow user-access administration.": "Jūsu loma neļauj pārvaldīt lietotāju piekļuvi.",
+    "Add user": "Pievienot lietotāju", "Users": "Lietotāji", "Platform access": "Piekļuve platformai",
+    "Director and Administrator controls": "Direktora un administratora vadīklas",
+    "Name": "Vārds", "Email": "E-pasts", "Role": "Loma", "Status": "Statuss", "Created": "Izveidots",
+    "Manage": "Pārvaldīt", "Current account": "Pašreizējais konts",
+    "Account active": "Aktīvs", "Account inactive": "Neaktīvs", "Edit": "Rediģēt",
+    "Manage project access": "Pārvaldīt projekta piekļuvi",
+    "Director": "Direktors", "Administrator": "Administrators", "Project Manager": "Projektu vadītājs", "Foreman": "Būvdarbu vadītājs", "Employee": "Darbinieks",
+    "Global role has access to all projects.": "Globālajai lomai ir piekļuve visiem projektiem.",
+    "No projects yet.": "Vēl nav projektu.", "Access level": "Piekļuves līmenis", "Role default": "Lomas noklusējums",
+    "Read-only": "Tikai lasīšana", "Full access": "Pilna piekļuve", "No project access": "Nav piekļuves projektam",
+    "Custom": "Pielāgots", "Save": "Saglabāt",
+    "Password": "Parole", "Confirm password": "Apstiprināt paroli", "Create user": "Izveidot lietotāju",
+    "Save user": "Saglabāt lietotāju", "Saving…": "Saglabā…",
+    "Your active session cannot deactivate itself.": "Jūsu aktīvā sesija nevar deaktivizēt sevi.",
+    "Role permissions do not automatically grant access to projects.": "Lomas atļaujas automātiski nepiešķir piekļuvi projektiem.",
+    "After creating the user, open “Manage project access” below to grant access to specific projects.": "Pēc lietotāja izveides atveriet zemāk “Pārvaldīt projekta piekļuvi”, lai piešķirtu piekļuvi konkrētiem projektiem.",
+    "No project access yet": "Vēl nav piekļuves projektam",
+    "Deactivate": "Deaktivizēt", "Reactivate": "Atkārtoti aktivizēt", "Deactivate user?": "Deaktivizēt lietotāju?",
+    "A deactivated user cannot sign in; their active sessions end immediately. History and attribution are preserved, and they can be reactivated later.": "Deaktivizēts lietotājs nevar pieteikties; viņa aktīvās sesijas nekavējoties beidzas. Vēsture un attiecinājums tiek saglabāti, un vēlāk var atkārtoti aktivizēt.",
+    "Deactivate user": "Deaktivizēt lietotāju", "Reactivate user": "Atkārtoti aktivizēt lietotāju",
+    "Account access": "Konta piekļuve", "Cancel": "Atcelt",
+    "You cannot deactivate your own currently authenticated account.": "Jūs nevarat deaktivizēt savu pašreiz autentificēto kontu.",
+  },
+  ru: {
+    "All": "Все", "Back to issue": "Назад к записи", "Approx. position": "Прибл. положение",
+    "top-left": "Вверху слева", "top-center": "Вверху по центру", "top-right": "Вверху справа",
+    "mid-left": "По центру слева", "center": "В центре", "mid-right": "По центру справа",
+    "bottom-left": "Внизу слева", "bottom-center": "Внизу по центру", "bottom-right": "Внизу справа",
+    "Access & roles": "Доступ и роли", "Administration": "Администрирование", "Restricted": "Ограничено",
+    "Your role does not allow user-access administration.": "Ваша роль не позволяет управлять доступом пользователей.",
+    "Add user": "Добавить пользователя", "Users": "Пользователи", "Platform access": "Доступ к платформе",
+    "Director and Administrator controls": "Управление для директора и администратора",
+    "Name": "Имя", "Email": "Эл. почта", "Role": "Роль", "Status": "Статус", "Created": "Создан",
+    "Manage": "Управление", "Current account": "Текущая учётная запись",
+    "Account active": "Активен", "Account inactive": "Неактивен", "Edit": "Редактировать",
+    "Manage project access": "Управление доступом к проекту",
+    "Director": "Директор", "Administrator": "Администратор", "Project Manager": "Руководитель проекта", "Foreman": "Прораб", "Employee": "Сотрудник",
+    "Global role has access to all projects.": "Глобальная роль имеет доступ ко всем проектам.",
+    "No projects yet.": "Проектов пока нет.", "Access level": "Уровень доступа", "Role default": "По умолчанию для роли",
+    "Read-only": "Только чтение", "Full access": "Полный доступ", "No project access": "Нет доступа к проекту",
+    "Custom": "Настраиваемый", "Save": "Сохранить",
+    "Password": "Пароль", "Confirm password": "Подтвердите пароль", "Create user": "Создать пользователя",
+    "Save user": "Сохранить пользователя", "Saving…": "Сохранение…",
+    "Your active session cannot deactivate itself.": "Ваш активный сеанс не может деактивировать сам себя.",
+    "Role permissions do not automatically grant access to projects.": "Права роли не дают автоматического доступа к проектам.",
+    "After creating the user, open “Manage project access” below to grant access to specific projects.": "После создания пользователя откройте ниже «Управление доступом к проекту», чтобы предоставить доступ к конкретным проектам.",
+    "No project access yet": "Пока нет доступа к проекту",
+    "Deactivate": "Деактивировать", "Reactivate": "Повторно активировать", "Deactivate user?": "Деактивировать пользователя?",
+    "A deactivated user cannot sign in; their active sessions end immediately. History and attribution are preserved, and they can be reactivated later.": "Деактивированный пользователь не может войти; его активные сеансы немедленно завершаются. История и авторство сохраняются, и позже его можно повторно активировать.",
+    "Deactivate user": "Деактивировать пользователя", "Reactivate user": "Повторно активировать пользователя",
+    "Account access": "Доступ к учётной записи", "Cancel": "Отмена",
+    "You cannot deactivate your own currently authenticated account.": "Вы не можете деактивировать свою текущую аутентифицированную учётную запись.",
+  },
+};
+
 export function portalText(language: PortalLanguage, value: string): string {
-  if (language === "lv") return sprint13Text.lv[value] ?? sprint12PackText.lv[value] ?? sprint12Text.lv[value] ?? sprint113Text.lv[value] ?? reportWeatherFailureText.lv[value] ?? importApplyText.lv[value] ?? repeatedMarkText.lv[value] ?? groupedImportText.lv[value] ?? mappingStatusText.lv[value] ?? xlsxMappingText.lv[value] ?? sprint111Extra.lv[value] ?? sprint111Text.lv[value] ?? elementDetailText.lv[value] ?? reportLifecycleText.lv[value] ?? sprint11.lv[value] ?? printNavigationText.lv[value] ?? printViewText.lv[value] ?? reportActionText.lv[value] ?? sprint10.lv[value] ?? lv[value] ?? value;
-  if (language === "ru") return sprint13Text.ru[value] ?? sprint12PackText.ru[value] ?? sprint12Text.ru[value] ?? sprint113Text.ru[value] ?? reportWeatherFailureText.ru[value] ?? importApplyText.ru[value] ?? repeatedMarkText.ru[value] ?? groupedImportText.ru[value] ?? mappingStatusText.ru[value] ?? xlsxMappingText.ru[value] ?? sprint111Extra.ru[value] ?? sprint111Text.ru[value] ?? elementDetailText.ru[value] ?? reportLifecycleText.ru[value] ?? sprint11.ru[value] ?? printNavigationText.ru[value] ?? printViewText.ru[value] ?? reportActionText.ru[value] ?? sprint10.ru[value] ?? ru[value] ?? value;
-  return sprint13Text.en[value] ?? sprint113Text.en[value] ?? reportWeatherFailureText.en[value] ?? importApplyText.en[value] ?? repeatedMarkText.en[value] ?? groupedImportText.en[value] ?? mappingStatusText.en[value] ?? xlsxMappingText.en[value] ?? sprint111Extra.en[value] ?? sprint111Text.en[value] ?? elementDetailText.en[value] ?? reportLifecycleText.en[value] ?? sprint11.en[value] ?? printNavigationText.en[value] ?? printViewText.en[value] ?? reportActionText.en[value] ?? sprint10.en[value] ?? value;
+  if (language === "lv") return fixpack14Text.lv[value] ?? sprint14Text.lv[value] ?? sprint13Text.lv[value] ?? sprint12PackText.lv[value] ?? sprint12Text.lv[value] ?? sprint113Text.lv[value] ?? reportWeatherFailureText.lv[value] ?? importApplyText.lv[value] ?? repeatedMarkText.lv[value] ?? groupedImportText.lv[value] ?? mappingStatusText.lv[value] ?? xlsxMappingText.lv[value] ?? sprint111Extra.lv[value] ?? sprint111Text.lv[value] ?? elementDetailText.lv[value] ?? reportLifecycleText.lv[value] ?? sprint11.lv[value] ?? printNavigationText.lv[value] ?? printViewText.lv[value] ?? reportActionText.lv[value] ?? sprint10.lv[value] ?? lv[value] ?? value;
+  if (language === "ru") return fixpack14Text.ru[value] ?? sprint14Text.ru[value] ?? sprint13Text.ru[value] ?? sprint12PackText.ru[value] ?? sprint12Text.ru[value] ?? sprint113Text.ru[value] ?? reportWeatherFailureText.ru[value] ?? importApplyText.ru[value] ?? repeatedMarkText.ru[value] ?? groupedImportText.ru[value] ?? mappingStatusText.ru[value] ?? xlsxMappingText.ru[value] ?? sprint111Extra.ru[value] ?? sprint111Text.ru[value] ?? elementDetailText.ru[value] ?? reportLifecycleText.ru[value] ?? sprint11.ru[value] ?? printNavigationText.ru[value] ?? printViewText.ru[value] ?? reportActionText.ru[value] ?? sprint10.ru[value] ?? ru[value] ?? value;
+  return fixpack14Text.en[value] ?? sprint14Text.en[value] ?? sprint13Text.en[value] ?? sprint113Text.en[value] ?? reportWeatherFailureText.en[value] ?? importApplyText.en[value] ?? repeatedMarkText.en[value] ?? groupedImportText.en[value] ?? mappingStatusText.en[value] ?? xlsxMappingText.en[value] ?? sprint111Extra.en[value] ?? sprint111Text.en[value] ?? elementDetailText.en[value] ?? reportLifecycleText.en[value] ?? sprint11.en[value] ?? printNavigationText.en[value] ?? printViewText.en[value] ?? reportActionText.en[value] ?? sprint10.en[value] ?? value;
 }
 
 export function normalizePortalLanguage(value: string | undefined): PortalLanguage {

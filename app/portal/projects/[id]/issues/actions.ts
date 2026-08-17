@@ -5,8 +5,8 @@ import { extname } from "node:path";
 import { requireUser } from "../../../../../lib/auth";
 import { canCaptureProjectIssues, canCommentProjectIssues, canManageProjectIssues } from "../../../../../lib/permissions";
 import { getProject, runTransaction } from "../../../../../lib/repositories";
-import { addIssueComment, addIssueMedia, assignIssue, cancelIssue, classifyIssue, closeIssue, createQuickCapture, getIssue, resolveIssue, setIssueStatus } from "../../../../../lib/issues-repo";
-import { issueMediaKind, removeStoredFile, storeUpload } from "../../../../../lib/storage";
+import { addIssueComment, addIssueMedia, assignIssue, cancelIssue, classifyIssue, closeIssue, createQuickCapture, getIssue, replaceIssueDrawingSnapshot, resolveIssue, setIssueStatus } from "../../../../../lib/issues-repo";
+import { issueMediaKind, removeStoredFile, storeSnapshotPng, storeUpload } from "../../../../../lib/storage";
 import { ISSUE_CAPTURE_MAX_FILES, isValidPriority, isValidType } from "../../../../../lib/issues";
 
 export type CaptureState = { error: string };
@@ -49,19 +49,28 @@ export async function captureIssueAction(_state: CaptureState, data: FormData): 
     const title = value(data, "title", 200);
     const details = value(data, "details", 8000);
     const intent = value(data, "intent", 20) === "Task" ? "Task" : "Defect";
+    // Optional drawing marker carried from the viewer (capture-from-drawing). Validated in the
+    // repo against project scope + normalized bounds; ignored unless all four fields are present.
+    const docRaw = value(data, "documentId", 30), pageRaw = value(data, "drawingPage", 10), xRaw = value(data, "drawingX", 30), yRaw = value(data, "drawingY", 30);
+    const marker = docRaw && pageRaw && xRaw && yRaw ? { documentId: Number(docRaw), page: Number(pageRaw), x: Number(xRaw), y: Number(yRaw) } : undefined;
     const files = data.getAll("media").filter((f): f is File => f instanceof File && f.size > 0);
     if (files.length > ISSUE_CAPTURE_MAX_FILES) return { error: `You can attach at most ${ISSUE_CAPTURE_MAX_FILES} files per capture.` };
     if (!title && !details && !files.length) return { error: "Add a short description or at least one photo." };
     let stored;
     try { stored = await storeIssueFiles(files, "evidence"); } catch (error) { return { error: error instanceof Error ? error.message : "Media upload failed." }; }
+    // Best-effort drawing crop captured client-side (only when placing from a drawing). Stored
+    // outside the transaction; skipped silently if absent/invalid — never blocks the capture.
+    const snapshot = marker ? await storeSnapshotPng(String(data.get("snapshot") ?? "")) : null;
     let issueId = 0;
     try {
       runTransaction(() => {
-        issueId = createQuickCapture({ projectId, title: title || (details ? details.slice(0, 60) : ""), details, type: intent, actor: auth.user });
+        issueId = createQuickCapture({ projectId, title: title || (details ? details.slice(0, 60) : ""), details, type: intent, marker, actor: auth.user });
         for (const item of stored) addIssueMedia(issueId, projectId, { ...item, caption: "" }, auth.user);
+        if (snapshot) replaceIssueDrawingSnapshot(issueId, snapshot, auth.user);
       });
     } catch (error) {
       for (const item of stored) await removeStoredFile(item.storedPath);
+      if (snapshot) await removeStoredFile(snapshot.storedPath);
       return { error: error instanceof Error ? error.message : "Could not save the capture." };
     }
     revalidatePath(`/portal/projects/${projectId}/issues`);

@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../../../lib/auth";
 import { canManageAccess,ROLES,type Role } from "../../../lib/permissions";
-import { createUserAccess,getProject,getUserAccess,getUserAccessByEmail,logActivity,removeProjectPermission,runTransaction,setProjectPermission,updateUserAccess } from "../../../lib/repositories";
-import { presetCapabilities,type AccessPreset } from "../../../lib/project-access";
+import { createUserAccess,getProject,getUserAccess,getUserAccessByEmail,logActivity,runTransaction,setProjectPermission,setUserActiveState,updateUserAccess } from "../../../lib/repositories";
+import { presetCapabilities,type AccessPreset,type CapabilityMap } from "../../../lib/project-access";
 import { hashPassword } from "../../../lib/security";
 
 export type UserFormState={error:string;success:string};
@@ -27,10 +27,32 @@ export async function setUserProjectAccessAction(data:FormData){
   if(!target||!project)throw new Error("Invalid selection.");
   if(!ACCESS_PRESETS.includes(preset))throw new Error("Invalid access level.");
   runTransaction(()=>{
-    if(preset==="role"){removeProjectPermission(userId,projectId);}
-    else{const capabilities=presetCapabilities(preset);if(capabilities)setProjectPermission(userId,projectId,capabilities,actor.id);}
-    logActivity({userId:actor.id,actor:actor.name,action:preset==="role"?"Reset project access to role default":preset==="none"?"Revoked project access":"Set project permissions",entityType:"user",entityId:String(userId),details:`${target.name} · ${project.name} · ${preset}`});
+    // Every preset now writes an explicit project_permissions row = explicit project membership.
+    // "Default for role" stores an EMPTY capability map: membership is granted (the project
+    // becomes visible) while effective permissions are derived from the user's role preset
+    // (resolveProjectCapabilities applies no overrides on top of the base role). It must never
+    // mean "no access" — the previous behaviour (delete the row) silently removed access for any
+    // user without legacy membership. "No project access" (none) stays an explicit all-false revoke.
+    const capabilities:CapabilityMap=preset==="role"?{}:(presetCapabilities(preset)??{});
+    setProjectPermission(userId,projectId,capabilities,actor.id);
+    logActivity({userId:actor.id,actor:actor.name,action:preset==="role"?"Granted project access (role default)":preset==="none"?"Revoked project access":"Set project permissions",entityType:"user",entityId:String(userId),details:`${target.name} · ${project.name} · ${preset}`});
   });
   revalidatePath("/portal/access");redirect("/portal/access");
 }
+// Explicit, audited user lifecycle: deactivate / reactivate (a visible, confirmed control that
+// surfaces the same soft state the edit form's status carries). Deactivation blocks sign-in and
+// invalidates every active session immediately (getSessionUser requires users.active=1), while
+// all historical references — issues, comments, events, activity log, attribution — are
+// preserved (no row is deleted). Director/Administrator only; the current account can never
+// deactivate itself. Reactivation restores sign-in. Idempotent — no-ops on unchanged state.
+export async function setUserActiveAction(data:FormData){
+  const actor=await accessManager();
+  const id=Number(value(data,"id"));const active=value(data,"active")==="1"?1:0;
+  if(!Number.isInteger(id)||id<1)throw new Error("Invalid user.");
+  const existing=getUserAccess(id);if(!existing)throw new Error("User not found.");
+  if(id===actor.id&&!active)throw new Error("You cannot deactivate your own currently authenticated account.");
+  runTransaction(()=>setUserActiveState(id,active,actor));
+  revalidatePath("/portal/access");redirect("/portal/access");
+}
+
 export async function updateUserAction(_state:UserFormState,data:FormData):Promise<UserFormState>{const actor=await accessManager();try{const id=Number(value(data,"id"));if(!Number.isInteger(id)||id<1)throw new Error("Invalid user.");const existing=getUserAccess(id);if(!existing)throw new Error("User not found.");const input=commonInput(data);if(id===actor.id&&!input.active)throw new Error("You cannot deactivate your own currently authenticated account.");runTransaction(()=>{const duplicate=getUserAccessByEmail(input.email);if(duplicate&&duplicate.id!==id)throw new Error("A user with this email already exists.");updateUserAccess(id,input);const changes:string[]=[];if(existing.name!==input.name)changes.push(`${existing.name} → ${input.name}`);if(existing.email.toLowerCase()!==input.email)changes.push(`${existing.email} → ${input.email}`);if(existing.role!==input.role)changes.push(`Role: ${existing.role} → ${input.role}`);if(Boolean(existing.active)!==Boolean(input.active))changes.push(`Status: ${existing.active?"Active":"Inactive"} → ${input.active?"Active":"Inactive"}`);if(changes.length)logActivity({userId:actor.id,actor:actor.name,action:"Updated user",entityType:"user",entityId:String(id),details:changes.join(" · ")});});revalidatePath("/portal/access");return{error:"",success:`${input.name} was updated.`};}catch(error){return{error:message(error),success:""};}}

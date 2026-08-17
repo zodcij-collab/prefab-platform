@@ -2,15 +2,15 @@
 // and the existing project/element/zone/member + audit helpers. Callers (server actions)
 // wrap multi-step mutations in runTransaction; every mutation records an append-only event.
 import { db } from "./db.ts";
-import { getInstallationZone, getProject, getProjectElement, listProjectMembers, logActivity } from "./repositories.ts";
-import { attentionReasons, canTransition, isValidPriority, isValidType, visibleAttentionReasons, OPEN_STATUSES } from "./issues.ts";
+import { getInstallationZone, getProject, getProjectDocument, getProjectElement, listProjectMembers, logActivity } from "./repositories.ts";
+import { attentionReasons, canTransition, clampUnit, isValidMarker, isValidPriority, isValidType, visibleAttentionReasons, OPEN_STATUSES } from "./issues.ts";
 
 export type Issue = {
   id: number; projectId: string; issueNumber: number; type: string; title: string; details: string;
   priority: string; status: string; classified: number;
   installationZoneId: number | null; installationZoneName: string;
   elementId: number | null; elementCode: string;
-  documentId: number | null; drawingPage: number | null; drawingX: number | null; drawingY: number | null;
+  documentId: number | null; documentTitle: string; drawingPage: number | null; drawingX: number | null; drawingY: number | null;
   assignedToId: string | null; assignedTo: string; dueDate: string;
   resolution: string; resolvedAt: string; resolvedById: number | null; resolvedBy: string;
   closedAt: string; closedById: number | null; closedBy: string; cancelReason: string;
@@ -24,12 +24,12 @@ export type Actor = { id: number; name: string };
 const issueSelect = `SELECT i.id,i.project_id AS projectId,i.issue_number AS issueNumber,i.type,i.title,i.details,i.priority,i.status,i.classified,
   i.installation_zone_id AS installationZoneId,COALESCE(iz.name,'') AS installationZoneName,
   i.element_id AS elementId,COALESCE(e.code,'') AS elementCode,
-  i.document_id AS documentId,i.drawing_page AS drawingPage,i.drawing_x AS drawingX,i.drawing_y AS drawingY,
+  i.document_id AS documentId,COALESCE(d.title,'') AS documentTitle,i.drawing_page AS drawingPage,i.drawing_x AS drawingX,i.drawing_y AS drawingY,
   i.assigned_to_id AS assignedToId,i.assigned_to AS assignedTo,i.due_date AS dueDate,
   i.resolution,i.resolved_at AS resolvedAt,i.resolved_by_id AS resolvedById,i.resolved_by AS resolvedBy,
   i.closed_at AS closedAt,i.closed_by_id AS closedById,i.closed_by AS closedBy,i.cancel_reason AS cancelReason,
   i.created_by_id AS createdById,i.created_by AS createdBy,i.created_at AS createdAt,i.updated_at AS updatedAt
-  FROM issues i LEFT JOIN installation_zones iz ON iz.id=i.installation_zone_id LEFT JOIN project_elements e ON e.id=i.element_id`;
+  FROM issues i LEFT JOIN installation_zones iz ON iz.id=i.installation_zone_id LEFT JOIN project_elements e ON e.id=i.element_id LEFT JOIN project_documents d ON d.id=i.document_id`;
 
 export function nextIssueNumber(projectId: string): number {
   return Number((db.prepare("SELECT COALESCE(MAX(issue_number),0)+1 AS n FROM issues WHERE project_id=?").get(projectId) as { n: number }).n);
@@ -63,7 +63,7 @@ export function listIssues(projectId: string, filters: { status?: string; type?:
   if (filters.elementId) { where.push("i.element_id=?"); params.push(filters.elementId); }
   if (filters.needsClassification) where.push("(i.classified=0 OR i.status='Captured')");
   if (filters.openOnly) where.push("i.status NOT IN ('Closed','Cancelled')");
-  return db.prepare(`${issueSelect.replace("FROM issues i", ", (SELECT COUNT(*) FROM issue_media m WHERE m.issue_id=i.id) AS mediaCount FROM issues i")} WHERE ${where.join(" AND ")} ORDER BY (i.status IN ('Closed','Cancelled')),i.issue_number DESC`).all(...params) as unknown as IssueSummary[];
+  return db.prepare(`${issueSelect.replace("FROM issues i", ", (SELECT COUNT(*) FROM issue_media m WHERE m.issue_id=i.id AND m.role<>'drawing-location') AS mediaCount FROM issues i")} WHERE ${where.join(" AND ")} ORDER BY (i.status IN ('Closed','Cancelled')),i.issue_number DESC`).all(...params) as unknown as IssueSummary[];
 }
 
 // Non-terminal issues for the Requires Attention service (attention reasons are derived in
@@ -75,18 +75,81 @@ export function listActiveIssues(projectId: string): Issue[] {
 // Quick site capture: minimum friction. Project + author + timestamp are automatic; the
 // record is 'Captured' and flagged for later classification. Persists only when called
 // (the editor route writes nothing until save — no phantom records / consumed numbers).
-export function createQuickCapture(input: { projectId: string; title: string; details: string; type?: string; actor: Actor }): number {
+export function createQuickCapture(input: { projectId: string; title: string; details: string; type?: string; marker?: { documentId: number; page: number; x: number; y: number }; actor: Actor }): number {
   const project = getProject(input.projectId);
   if (!project) throw new Error("Project not found.");
   if (project.archivedAt) throw new Error("Archived projects are read-only. Restore the project first.");
   // The on-site intent (Defect / Task) sets the initial type; full classification refines it.
   const type = input.type && isValidType(input.type) ? input.type : "Defect";
+  // Optional drawing marker (capture-from-drawing) — validated against the project + bounds.
+  const m = input.marker ? validateProjectMarker(input.projectId, input.marker) : null;
   const number = nextIssueNumber(input.projectId);
-  const id = Number(db.prepare("INSERT INTO issues(project_id,issue_number,type,title,details,priority,status,classified,created_by_id,created_by) VALUES(?,?,?,?,?,?,?,0,?,?)")
-    .run(input.projectId, number, type, input.title.slice(0, 200), input.details.slice(0, 8000), "Normal", "Captured", input.actor.id, input.actor.name).lastInsertRowid);
+  const id = Number(db.prepare("INSERT INTO issues(project_id,issue_number,type,title,details,priority,status,classified,document_id,drawing_page,drawing_x,drawing_y,created_by_id,created_by) VALUES(?,?,?,?,?,?,?,0,?,?,?,?,?,?)")
+    .run(input.projectId, number, type, input.title.slice(0, 200), input.details.slice(0, 8000), "Normal", "Captured", m?.documentId ?? null, m?.page ?? null, m?.x ?? null, m?.y ?? null, input.actor.id, input.actor.name).lastInsertRowid);
   recordIssueEvent(id, "created", `Quick capture #${number}`, input.actor);
-  logActivity({ userId: input.actor.id, actor: input.actor.name, action: "Site issue captured", entityType: "project", entityId: input.projectId, details: `Issue #${number}` });
+  if (m) recordIssueEvent(id, "marker", `${m.title} · p.${m.page}`, input.actor);
+  logActivity({ userId: input.actor.id, actor: input.actor.name, action: "Site issue captured", entityType: "project", entityId: input.projectId, details: `Issue #${number}${m ? ` · drawing ${m.title} p.${m.page}` : ""}` });
   return id;
+}
+
+// ── Sprint 14: drawing markers ──────────────────────────────────────
+export type DocumentMarker = { id: number; issueNumber: number; type: string; title: string; status: string; priority: string; assignedTo: string; dueDate: string; drawingPage: number; drawingX: number; drawingY: number };
+
+// Validate a marker against the project: PDF document in scope + normalized bounds. The
+// document is referenced by its immutable id, so a historical marker keeps pointing at the
+// exact document (revision) it was placed on even if a newer file is later uploaded.
+function validateProjectMarker(projectId: string, marker: { documentId: number; page: number; x: number; y: number }): { documentId: number; page: number; x: number; y: number; title: string } {
+  if (!isValidMarker(marker.page, marker.x, marker.y)) throw new Error("Invalid drawing marker position.");
+  const document = getProjectDocument(marker.documentId);
+  if (!document || document.projectId !== projectId) throw new Error("The drawing is not part of this project.");
+  if (document.mimeType !== "application/pdf") throw new Error("Markers can only be placed on PDF drawings.");
+  return { documentId: marker.documentId, page: marker.page, x: clampUnit(marker.x), y: clampUnit(marker.y), title: document.title };
+}
+
+// Set or move the drawing marker on an existing issue (same immutable record). Distinguishes
+// an added vs changed marker for the audit trail.
+export function setIssueMarker(id: number, projectId: string, marker: { documentId: number; page: number; x: number; y: number }, actor: Actor) {
+  const issue = loadIssueForMutation(id, projectId);
+  const m = validateProjectMarker(projectId, marker);
+  const changed = issue.documentId !== null;
+  db.prepare("UPDATE issues SET document_id=?,drawing_page=?,drawing_x=?,drawing_y=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND project_id=?").run(m.documentId, m.page, m.x, m.y, id, projectId);
+  recordIssueEvent(id, changed ? "marker_changed" : "marker", changed ? `${m.title} p.${m.page} (was ${issue.documentTitle || `#${issue.documentId}`} p.${issue.drawingPage})` : `${m.title} · p.${m.page}`, actor);
+  logActivity({ userId: actor.id, actor: actor.name, action: changed ? "Drawing marker changed" : "Drawing marker added", entityType: "project", entityId: projectId, details: `Issue #${issue.issueNumber} · ${m.title} p.${m.page}` });
+}
+
+export function clearIssueMarker(id: number, projectId: string, actor: Actor) {
+  const issue = loadIssueForMutation(id, projectId);
+  if (issue.documentId === null) throw new Error("This issue has no drawing location.");
+  db.prepare("UPDATE issues SET document_id=NULL,drawing_page=NULL,drawing_x=NULL,drawing_y=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND project_id=?").run(id, projectId);
+  recordIssueEvent(id, "marker_removed", `${issue.documentTitle || `#${issue.documentId}`} p.${issue.drawingPage}`, actor);
+  logActivity({ userId: actor.id, actor: actor.name, action: "Drawing marker removed", entityType: "project", entityId: projectId, details: `Issue #${issue.issueNumber}` });
+}
+
+// ── Drawing-location snapshot (best-effort visual crop for the Issue PDF) ──────────
+// A single 'drawing-location' image per issue: a client-captured crop of the drawing around
+// the marker. Stored as issue_media with a dedicated role (NOT evidence — never shown in the
+// evidence grid, no "media added" event). Replacing/removing returns the prior stored paths so
+// the async caller can delete the files after the DB transaction commits.
+export function replaceIssueDrawingSnapshot(id: number, snapshot: { storedPath: string; fileSize: number }, actor: Actor): string[] {
+  const prior = (db.prepare("SELECT stored_path AS storedPath FROM issue_media WHERE issue_id=? AND role='drawing-location'").all(id) as { storedPath: string }[]).map((p) => p.storedPath);
+  db.prepare("DELETE FROM issue_media WHERE issue_id=? AND role='drawing-location'").run(id);
+  db.prepare("INSERT INTO issue_media(issue_id,role,kind,original_filename,stored_path,file_size,mime_type,caption,uploaded_by_id,uploaded_by) VALUES(?,?,?,?,?,?,?,?,?,?)")
+    .run(id, "drawing-location", "image", "drawing-location.png", snapshot.storedPath, snapshot.fileSize, "image/png", "", actor.id, actor.name);
+  return prior;
+}
+export function removeIssueDrawingSnapshot(id: number): string[] {
+  const prior = (db.prepare("SELECT stored_path AS storedPath FROM issue_media WHERE issue_id=? AND role='drawing-location'").all(id) as { storedPath: string }[]).map((p) => p.storedPath);
+  db.prepare("DELETE FROM issue_media WHERE issue_id=? AND role='drawing-location'").run(id);
+  return prior;
+}
+
+// Lightweight marker projection for the overlay — scoped to a document (optionally a page),
+// no media/history joins, one indexed query. Returns every placed marker with its status so
+// the client applies visibility/filtering (cancelled hidden by default, etc.).
+export function listDocumentMarkers(projectId: string, documentId: number, page?: number): DocumentMarker[] {
+  const where = ["i.project_id=?", "i.document_id=?", "i.drawing_x IS NOT NULL"], params: (string | number)[] = [projectId, documentId];
+  if (page) { where.push("i.drawing_page=?"); params.push(page); }
+  return db.prepare(`SELECT i.id,i.issue_number AS issueNumber,i.type,i.title,i.status,i.priority,i.assigned_to AS assignedTo,i.due_date AS dueDate,i.drawing_page AS drawingPage,i.drawing_x AS drawingX,i.drawing_y AS drawingY FROM issues i WHERE ${where.join(" AND ")} ORDER BY i.issue_number`).all(...params) as unknown as DocumentMarker[];
 }
 
 // Enrich the SAME immutable record — never creates a second issue. A still-Captured issue

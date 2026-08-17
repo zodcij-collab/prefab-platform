@@ -631,3 +631,13 @@ if (!siteIssues) {
   `);
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint13_site_issues");
 }
+
+// Sprint 14 — Drawings & site markers. The marker DATA reuses the Sprint 13 reserved columns
+// (issues.document_id / drawing_page / drawing_x / drawing_y) — no new columns or tables. This
+// migration only adds an index so the drawing overlay can query markers by document (and page)
+// without scanning. Additive + idempotent.
+const drawingMarkers = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint14_drawing_markers");
+if (!drawingMarkers) {
+  db.exec("CREATE INDEX IF NOT EXISTS issues_document_marker_idx ON issues(document_id, drawing_page) WHERE document_id IS NOT NULL;");
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint14_drawing_markers");
+}

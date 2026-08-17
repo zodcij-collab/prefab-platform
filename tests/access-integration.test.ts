@@ -122,3 +122,70 @@ test("project permission rows round-trip through the repository", () => {
   assert.ok(repo.listProjectPermissions("acc-round").some((row) => row.userId === pm.id));
   assert.ok(repo.listUserProjectPermissions(pm.id).some((row) => row.projectId === "acc-round"));
 });
+
+// ── Fix pack: "Default for role" project-access grant (A–J) ───────────────────
+// The Access & Roles editor stores each preset as an explicit project_permissions row. "Default
+// for role" is an EMPTY capability map (membership granted, permissions inherited from the role)
+// — mirroring setUserProjectAccessAction. These prove the grant is effective, role-scoped, and
+// does not regress the other modes.
+const asRoleDefault = (userId: number, projectId: string) => repo.setProjectPermission(userId, projectId, {}, 1);
+
+test("§fp A/B/C/D/E/I: 'Default for role' grants effective, role-scoped project access", () => {
+  newProject("fp-def", "Default For Role");
+  const foreman = makeUser("Foreman", "fp-def-foreman@test");
+  // A: role alone (no grant) → no visibility.
+  assert.equal(perms.canAccessProject(foreman, "fp-def"), false, "A: role alone grants nothing");
+  assert.deepEqual(perms.permittedProjectIds(foreman, ["fp-def"]), [], "A: no project permitted before a grant");
+  // B: Default-for-role creates an explicit membership row.
+  asRoleDefault(foreman.id, "fp-def");
+  const row = repo.getProjectPermission(foreman.id, "fp-def");
+  assert.ok(row, "B: explicit project-permission row exists (membership)");
+  assert.deepEqual(row!.capabilities, {}, "B: stored as an empty capability map (role-derived)");
+  // C: the project is now visible.
+  assert.equal(perms.canAccessProject(foreman, "fp-def"), true, "C: user can see the granted project");
+  // I: the 'No project access yet' flag is driven by effective access → now non-empty.
+  assert.deepEqual(perms.permittedProjectIds(foreman, ["fp-def"]), ["fp-def"], "I: badge clears — project is permitted");
+  // D: effective capabilities are exactly the Foreman role preset.
+  const caps = perms.projectCapabilities(foreman, "fp-def");
+  assert.equal(caps["issues.manage"], true, "D: Foreman capabilities apply");
+  assert.equal(caps["reports.create"], true);
+  assert.equal(caps["reports.approve"], false, "D: no capability the role lacks");
+  assert.equal(caps["elements.manage"], false);
+  // E: still a role-scoped, non-admin user.
+  assert.equal(perms.canManageAccess(foreman), false, "E: not an access administrator");
+  assert.equal(perms.canManageProjectLifecycle(foreman), false, "E: not a global project admin");
+});
+
+test("§fp F/G: Full and Read-only presets resolve correctly", async () => {
+  const access = await import("../lib/project-access.ts");
+  newProject("fp-fg", "FG");
+  const full = makeUser("Foreman", "fp-fg-full@test");
+  const ro = makeUser("Foreman", "fp-fg-ro@test");
+  repo.setProjectPermission(full.id, "fp-fg", access.presetCapabilities("full")!, 1);
+  repo.setProjectPermission(ro.id, "fp-fg", access.presetCapabilities("read-only")!, 1);
+  // F: Full access.
+  assert.equal(perms.canAccessProject(full, "fp-fg"), true, "F: full access is visible");
+  assert.equal(perms.canProject(full, "fp-fg", "elements.manage"), true, "F: full access grants management");
+  // G: Read-only.
+  assert.equal(perms.canAccessProject(ro, "fp-fg"), true, "G: read-only is visible");
+  assert.equal(perms.canProject(ro, "fp-fg", "issues.view"), true, "G: read-only can view");
+  assert.equal(perms.canProject(ro, "fp-fg", "elements.manage"), false, "G: read-only cannot manage");
+  assert.equal(perms.canProject(ro, "fp-fg", "reports.create"), false, "G: read-only cannot create");
+});
+
+test("§fp H/J: removing access removes visibility; a grant persists across re-reads (refresh/re-login)", async () => {
+  const access = await import("../lib/project-access.ts");
+  newProject("fp-hj", "HJ");
+  const foreman = makeUser("Foreman", "fp-hj@test");
+  asRoleDefault(foreman.id, "fp-hj");
+  assert.equal(perms.canAccessProject(foreman, "fp-hj"), true);
+  // J: a fresh SessionUser (as a new request/login would build) still resolves the grant.
+  const relogin = { id: foreman.id, email: foreman.email, name: foreman.name, role: "Foreman" };
+  assert.equal(perms.canAccessProject(relogin, "fp-hj"), true, "J: grant survives re-login/refresh (persisted)");
+  // H: 'No project access' (explicit none) removes visibility while the row remains.
+  repo.setProjectPermission(foreman.id, "fp-hj", access.presetCapabilities("none")!, 1);
+  assert.equal(perms.canAccessProject(foreman, "fp-hj"), false, "H: 'none' revokes visibility");
+  // H (row-delete path also removes visibility).
+  repo.removeProjectPermission(foreman.id, "fp-hj");
+  assert.equal(perms.canAccessProject(foreman, "fp-hj"), false);
+});

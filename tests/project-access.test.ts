@@ -58,6 +58,23 @@ test("an override row alone grants access even without legacy membership", () =>
   assert.equal(resolved["reports.create"], true);
 });
 
+test("fix pack — 'Default for role': an EMPTY override row grants membership with role-derived capabilities (never 'no access')", () => {
+  // This is how the fixed "Default for role" preset is stored: an override row with an empty
+  // capability map. It must grant visibility (membership) while capabilities come from the role.
+  const foreman = resolveProjectCapabilities({ role: "Foreman", hasOverride: true, hasLegacyAccess: false, overrideCapabilities: {} });
+  assert.equal(foreman["project.view"], true, "the project becomes visible");
+  assert.equal(foreman["issues.manage"], true, "Foreman role capabilities apply");
+  assert.equal(foreman["reports.approve"], false, "no capability the base role lacks");
+  assert.equal(foreman["elements.manage"], false, "not elevated beyond the role");
+  // Distinct from an explicit 'none' revoke (all-false map) which removes access.
+  const revoked = resolveProjectCapabilities({ role: "Foreman", hasOverride: true, hasLegacyAccess: false, overrideCapabilities: presetCapabilities("none")! });
+  assert.deepEqual(revoked, NO_CAPABILITIES, "'none' still means no access");
+  // An Employee's empty-override membership inherits only what the Employee role grants.
+  const employee = resolveProjectCapabilities({ role: "Employee", hasOverride: true, hasLegacyAccess: false, overrideCapabilities: {} });
+  assert.equal(employee["project.view"], true);
+  assert.equal(employee["issues.manage"], false, "Employee stays minimal — role-derived");
+});
+
 test("presets produce the expected capability maps", () => {
   assert.equal(presetCapabilities("role"), null);
   assert.deepEqual(presetCapabilities("full"), ALL_CAPABILITIES);

@@ -242,6 +242,76 @@ test("§11 C/D/E: the overdue/critical summary counts equal what the deep-link f
   assert.equal(issues.listIssues("pa-3", { openOnly: true }).filter((i) => i.dueDate && i.dueDate < "2026-08-14").length, s.overdue);
 });
 
+function newDoc(projectId: string, over: Record<string, unknown> = {}): number {
+  return Number(repo.createProjectDocument({ projectId, title: "Plan A", category: "Drawings", revision: "", documentDate: "", status: "Current", description: "", originalFilename: "plan.pdf", storedPath: `documents/${Math.random().toString(36).slice(2)}.pdf`, fileSize: 1000, mimeType: "application/pdf", uploadedById: 1, uploadedBy: "T", ...over }).lastInsertRowid);
+}
+
+test("§14 H/I/J: an existing issue receives / moves / loses a drawing marker on the SAME record, audited", () => {
+  newProject("mk-1");
+  const doc = newDoc("mk-1", { title: "Level 2 GA" });
+  const id = issues.createQuickCapture({ projectId: "mk-1", title: "Cracked panel", details: "", actor });
+  issues.setIssueMarker(id, "mk-1", { documentId: doc, page: 2, x: 0.4, y: 0.6 }, actor);
+  let issue = issues.getIssue(id)!;
+  assert.equal(issue.documentId, doc); assert.equal(issue.drawingPage, 2); assert.equal(issue.drawingX, 0.4); assert.equal(issue.drawingY, 0.6);
+  assert.equal(issue.documentTitle, "Level 2 GA");
+  assert.equal(Number((db.prepare("SELECT COUNT(*) c FROM issues WHERE project_id='mk-1'").get() as { c: number }).c), 1, "no duplicate issue");
+  // Moving the marker records a 'marker_changed' event.
+  issues.setIssueMarker(id, "mk-1", { documentId: doc, page: 3, x: 0.1, y: 0.2 }, actor);
+  issue = issues.getIssue(id)!;
+  assert.deepEqual([issue.drawingPage, issue.drawingX], [3, 0.1]);
+  // Clearing removes it and records 'marker_removed'; issue itself is preserved.
+  issues.clearIssueMarker(id, "mk-1", actor);
+  issue = issues.getIssue(id)!;
+  assert.equal(issue.documentId, null); assert.equal(issue.drawingPage, null);
+  assert.deepEqual(issues.listIssueEvents(id).map((e) => e.kind), ["created", "marker", "marker_changed", "marker_removed"]);
+  assert.throws(() => issues.clearIssueMarker(id, "mk-1", actor), /no drawing location/);
+});
+
+test("§14 C/D/E: cross-project document, non-PDF, and out-of-bounds markers are rejected server-side", () => {
+  newProject("mk-c1"); newProject("mk-c2");
+  const localDoc = newDoc("mk-c1"), foreignDoc = newDoc("mk-c2"), nonPdf = newDoc("mk-c1", { mimeType: "image/png", originalFilename: "x.png" });
+  const id = issues.createQuickCapture({ projectId: "mk-c1", title: "X", details: "", actor });
+  assert.throws(() => issues.setIssueMarker(id, "mk-c1", { documentId: foreignDoc, page: 1, x: 0.5, y: 0.5 }, actor), /not part of this project/);
+  assert.throws(() => issues.setIssueMarker(id, "mk-c1", { documentId: nonPdf, page: 1, x: 0.5, y: 0.5 }, actor), /only be placed on PDF/);
+  assert.throws(() => issues.setIssueMarker(id, "mk-c1", { documentId: localDoc, page: 0, x: 0.5, y: 0.5 }, actor), /Invalid drawing marker/);
+  assert.throws(() => issues.setIssueMarker(id, "mk-c1", { documentId: localDoc, page: 1, x: 1.5, y: 0.5 }, actor), /Invalid drawing marker/);
+});
+
+test("§14 F: capture-from-drawing creates exactly one issue carrying the marker", () => {
+  newProject("mk-f");
+  const doc = newDoc("mk-f");
+  const id = issues.createQuickCapture({ projectId: "mk-f", title: "From drawing", details: "", type: "Task", marker: { documentId: doc, page: 1, x: 0.3, y: 0.7 }, actor });
+  const issue = issues.getIssue(id)!;
+  assert.equal(issue.type, "Task"); assert.equal(issue.documentId, doc); assert.equal(issue.drawingPage, 1); assert.equal(issue.drawingX, 0.3);
+  assert.equal(Number((db.prepare("SELECT COUNT(*) c FROM issues WHERE project_id='mk-f'").get() as { c: number }).c), 1);
+  assert.deepEqual(issues.listIssueEvents(id).map((e) => e.kind), ["created", "marker"]);
+});
+
+test("§14 M: marker list is scoped to a document (and page), lightweight projection", () => {
+  newProject("mk-m");
+  const doc = newDoc("mk-m"), other = newDoc("mk-m", { title: "Other" });
+  const a = issues.createQuickCapture({ projectId: "mk-m", title: "a", details: "", actor });
+  const b = issues.createQuickCapture({ projectId: "mk-m", title: "b", details: "", actor });
+  const c = issues.createQuickCapture({ projectId: "mk-m", title: "c", details: "", actor });
+  issues.setIssueMarker(a, "mk-m", { documentId: doc, page: 1, x: 0.1, y: 0.1 }, actor);
+  issues.setIssueMarker(b, "mk-m", { documentId: doc, page: 2, x: 0.2, y: 0.2 }, actor);
+  issues.setIssueMarker(c, "mk-m", { documentId: other, page: 1, x: 0.3, y: 0.3 }, actor);
+  assert.deepEqual(issues.listDocumentMarkers("mk-m", doc).map((m) => m.id).sort((x, y) => x - y), [a, b].sort((x, y) => x - y), "scoped to document");
+  assert.deepEqual(issues.listDocumentMarkers("mk-m", doc, 1).map((m) => m.id), [a], "scoped to document + page");
+  const marker = issues.listDocumentMarkers("mk-m", doc, 1)[0];
+  assert.deepEqual([marker.issueNumber, marker.type, marker.status, marker.drawingX], [issues.getIssue(a)!.issueNumber, "Defect", "Captured", 0.1]);
+});
+
+test("§14 K: drawing-marker mutations on an archived project are rejected", () => {
+  newProject("mk-k");
+  const doc = newDoc("mk-k");
+  const id = issues.createQuickCapture({ projectId: "mk-k", title: "X", details: "", actor });
+  issues.setIssueMarker(id, "mk-k", { documentId: doc, page: 1, x: 0.5, y: 0.5 }, actor);
+  repo.archiveProject("mk-k", actor.id);
+  assert.throws(() => issues.setIssueMarker(id, "mk-k", { documentId: doc, page: 1, x: 0.6, y: 0.6 }, actor), /Archived projects are read-only/);
+  assert.throws(() => issues.clearIssueMarker(id, "mk-k", actor), /Archived projects are read-only/);
+});
+
 test("cross-device: an issue captured by one session is the same server record read by another", () => {
   newProject("is-cd");
   const zone = repo.createInstallationZone("is-cd", "Z1", "");
@@ -253,4 +323,89 @@ test("cross-device: an issue captured by one session is the same server record r
   const listed = issues.listIssues("is-cd").find((i) => i.id === id)!;
   assert.equal(listed.title, "Site capture 27"); assert.equal(listed.mediaCount, 1); assert.equal(listed.installationZoneName, "Z1");
   assert.equal(issues.getIssue(id)!.details, "voice note text");
+});
+
+// ── Sprint 14 acceptance fix pack ─────────────────────────────────────────────
+test("§fp-F/G/H: role never auto-grants project access; explicit access enables visibility; a Foreman with full project access is NOT an admin", async () => {
+  const perms = await import("../lib/permissions.ts");
+  const access = await import("../lib/project-access.ts");
+  newProject("fp-rbac");
+  const uid = Number(repo.createUserAccess({ name: "Klim", email: "klim.fp@prefab.lv", role: "Foreman", active: 1, passwordHash: "s:h" }).lastInsertRowid);
+  const user = { id: uid, email: "klim.fp@prefab.lv", name: "Klim", role: "Foreman" };
+  // F: a fresh Foreman with default role permissions and no membership sees no project.
+  assert.equal(perms.canViewProjectIssues(user, "fp-rbac"), false, "F: role alone grants no project access");
+  assert.equal(repo.listUserProjectIds(uid).length, 0, "no implicit project membership from role");
+  // H (part 1): a Foreman is never a global access admin, regardless of project grants.
+  assert.equal(perms.canManageAccess(user), false, "Foreman cannot administer users/access");
+  // G: grant explicit Full project access → the project becomes visible and manageable.
+  repo.setProjectPermission(uid, "fp-rbac", access.presetCapabilities("full")!, 1);
+  assert.equal(perms.canViewProjectIssues(user, "fp-rbac"), true, "G: explicit project access enables visibility");
+  assert.equal(perms.canManageProjectIssues(user, "fp-rbac"), true, "G: full access includes project issue management");
+  // H (part 2): full PROJECT access does not elevate the Foreman to Director/Administrator.
+  assert.equal(perms.canManageAccess(user), false, "H: full project access ≠ admin/global role");
+  assert.equal(access.isGlobalRole(user.role), false, "H: the Foreman stays a role-scoped, non-global user");
+  // and access remains project-scoped — a different project is still invisible.
+  newProject("fp-other");
+  assert.equal(perms.canViewProjectIssues(user, "fp-other"), false, "access granted to one project does not leak to others");
+});
+
+test("§fp-I: deactivation blocks sign-in and invalidates active sessions (password stays intact)", async () => {
+  const { hashPassword, verifyPassword, hashToken } = await import("../lib/security.ts");
+  const uid = Number(repo.createUserAccess({ name: "Temp", email: "temp.fp@prefab.lv", role: "Foreman", active: 1, passwordHash: hashPassword("Sup3rSecret!x") }).lastInsertRowid);
+  // A live session exists before deactivation.
+  const token = "fp-token-i"; db.prepare("INSERT INTO sessions(user_id,token_hash,expires_at) VALUES(?,?,?)").run(uid, hashToken(token), "2999-01-01T00:00:00.000Z");
+  const sessionQuery = "SELECT u.id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1";
+  assert.ok(db.prepare(sessionQuery).get(hashToken(token), "2026-08-17T00:00:00.000Z"), "session valid while active");
+  repo.setUserActiveState(uid, 0, actor);
+  // Login gate (authenticate requires active) and session gate (getSessionUser requires active=1).
+  const row = repo.getUserAccess(uid)!; assert.equal(Number(row.active), 0);
+  assert.ok(verifyPassword("Sup3rSecret!x", (db.prepare("SELECT password_hash AS h FROM users WHERE id=?").get(uid) as { h: string }).h), "password unchanged — deactivation is not a credential reset");
+  assert.equal(db.prepare(sessionQuery).get(hashToken(token), "2026-08-17T00:00:00.000Z"), undefined, "the active session is immediately invalidated");
+});
+
+test("§fp-J: deactivation preserves history and attribution (no rows deleted)", () => {
+  const uid = Number(repo.createUserAccess({ name: "Author", email: "author.fp@prefab.lv", role: "Foreman", active: 1, passwordHash: "s:h" }).lastInsertRowid);
+  newProject("fp-hist");
+  const author = { id: uid, name: "Author" };
+  const issueId = issues.createQuickCapture({ projectId: "fp-hist", title: "Chip", details: "beam", actor: author });
+  issues.addIssueComment(issueId, "fp-hist", "on it", author);
+  repo.setUserActiveState(uid, 0, actor);
+  // The user row still exists; the issue, its attribution and its events are intact.
+  assert.ok(repo.getUserAccess(uid), "the user is disabled, not deleted");
+  const issue = issues.getIssue(issueId)!;
+  assert.equal(issue.createdBy, "Author", "authorship/attribution survives deactivation");
+  assert.ok(issues.listIssueEvents(issueId).length >= 2, "history (create + comment) survives deactivation");
+});
+
+test("§fp-K: the lifecycle action is audited and idempotent", () => {
+  const uid = Number(repo.createUserAccess({ name: "Audit", email: "audit.fp@prefab.lv", role: "Foreman", active: 1, passwordHash: "s:h" }).lastInsertRowid);
+  const userActions = () => repo.listActivity(200).filter((a) => a.entityType === "user" && a.entityId === String(uid)).map((a) => a.action);
+  assert.equal(repo.setUserActiveState(uid, 0, actor), true, "deactivation changes state");
+  assert.equal(repo.setUserActiveState(uid, 0, actor), false, "idempotent — a no-op second time");
+  assert.equal(repo.setUserActiveState(uid, 1, actor), true, "reactivation changes state");
+  const actions = userActions();
+  assert.ok(actions.includes("Deactivated user"), "deactivation is audited");
+  assert.ok(actions.includes("Reactivated user"), "reactivation is audited");
+  assert.equal(actions.filter((a) => a === "Deactivated user").length, 1, "the no-op did not write a duplicate audit entry");
+});
+
+test("§fp: drawing-location snapshot media is a single replaceable record, excluded from evidence", () => {
+  newProject("fp-snap");
+  const id = issues.createQuickCapture({ projectId: "fp-snap", title: "Snap", details: "", actor });
+  // Real evidence + a first snapshot.
+  issues.addIssueMedia(id, "fp-snap", media(), actor);
+  const prior1 = issues.replaceIssueDrawingSnapshot(id, { storedPath: "issues/snap-1.png", fileSize: 10 }, actor);
+  assert.deepEqual(prior1, [], "no prior snapshot to remove on first set");
+  // Replacing returns the previous snapshot's stored path (so the caller deletes the old file).
+  const prior2 = issues.replaceIssueDrawingSnapshot(id, { storedPath: "issues/snap-2.png", fileSize: 12 }, actor);
+  assert.deepEqual(prior2, ["issues/snap-1.png"], "replacement returns the prior snapshot path");
+  const all = issues.listIssueMedia(id);
+  assert.equal(all.filter((m) => m.role === "drawing-location").length, 1, "exactly one snapshot row is kept");
+  assert.equal(all.filter((m) => m.role === "evidence").length, 1, "the evidence photo is untouched");
+  // The issue-list media count ignores the snapshot (it is not an attachment the user added).
+  const summary = issues.listIssues("fp-snap").find((i) => i.id === id)!;
+  assert.equal(summary.mediaCount, 1, "media count excludes the drawing-location snapshot");
+  // Removing returns the current snapshot path and clears the row.
+  assert.deepEqual(issues.removeIssueDrawingSnapshot(id), ["issues/snap-2.png"]);
+  assert.equal(issues.listIssueMedia(id).filter((m) => m.role === "drawing-location").length, 0);
 });

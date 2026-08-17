@@ -79,6 +79,18 @@ export function createUserAccess(input: { name:string;email:string;role:string;a
 export function updateUserAccess(id:number,input:{name:string;email:string;role:string;active:number}) {
   return db.prepare(`UPDATE users SET name=?,email=?,role=?,active=? WHERE id=?`).run(input.name,input.email,input.role,input.active,id);
 }
+// Deactivate / reactivate a user with an audit trail — a soft, reversible lifecycle that never
+// deletes any row, so all history/attribution (issues, comments, events, activity log) survives.
+// Setting active=0 blocks sign-in AND invalidates every active session (getSessionUser requires
+// users.active=1). Idempotent: returns false (and audits nothing) when the state is unchanged.
+export function setUserActiveState(id:number,active:number,actor:{id:number;name:string}):boolean{
+  const existing=getUserAccess(id);
+  if(!existing)throw new Error("User not found.");
+  if(Boolean(existing.active)===Boolean(active))return false;
+  db.prepare(`UPDATE users SET active=? WHERE id=?`).run(active?1:0,id);
+  logActivity({userId:actor.id,actor:actor.name,action:active?"Reactivated user":"Deactivated user",entityType:"user",entityId:String(id),details:`${existing.name} · ${existing.email}`});
+  return true;
+}
 
 export function listDeliveries(projectId: string): Delivery[] {
   return db.prepare(`SELECT id, project_id AS projectId, delivery_date AS deliveryDate, delivery_time AS deliveryTime, supplier, load_ref AS loadRef, description, status, notes FROM deliveries WHERE project_id = ? ORDER BY delivery_date DESC, delivery_time DESC, id DESC`).all(projectId) as unknown as Delivery[];

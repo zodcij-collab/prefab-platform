@@ -18,4 +18,7 @@ coverage
 data/*.db
 data/*.db-shm
 data/*.db-wal
+
+# Local pilot DB safety backups
+backups/
 .env.local

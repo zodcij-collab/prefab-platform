@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { PortalLanguage } from "../data/portal-i18n.ts";
 import { portalText } from "../data/portal-i18n.ts";
 import { formatAppDateTime } from "./datetime.ts";
-import { isOverdue } from "./issues.ts";
+import { isOverdue, markerZoneKey } from "./issues.ts";
 
 const ORANGE = "#f26522", INK = "#171717", MUTED = "#686868", LINE = "#d8d8d8", PAPER = "#ffffff", ZEBRA = "#f5f5f3";
 const regularFont = join(process.cwd(), "node_modules", "dejavu-fonts-ttf", "ttf", "DejaVuSans.ttf");
@@ -13,13 +13,14 @@ export type IssuePdfIssue = {
   issueNumber: number; type: string; status: string; priority: string; title: string; details: string; classified: number;
   installationZoneName: string; elementCode: string; assignedTo: string; dueDate: string;
   createdBy: string; createdAt: string; resolution: string; resolvedBy: string; resolvedAt: string; closedBy: string; closedAt: string; cancelReason: string;
+  documentTitle?: string; drawingPage?: number | null; drawingX?: number | null; drawingY?: number | null;
 };
 // bytes present + an embeddable raster type → embedded; otherwise rendered as a text reference.
 export type IssuePdfMedia = { role: string; kind: string; mimeType: string; originalFilename: string; bytes: Buffer | null };
 export type IssuePdfEvent = { kind: string; detail: string; actor: string; createdAt: string };
 export type IssuePdfInput = { projectName: string; language: PortalLanguage; generatedBy: string; today: string; issue: IssuePdfIssue; media: IssuePdfMedia[]; events: IssuePdfEvent[] };
 
-const EVENT_LABEL: Record<string, string> = { created: "Captured", classified: "Classified", assigned: "Assignment changed", status: "Status changed", priority: "Priority changed", due: "Due date changed", media: "Media added", comment: "Comment", resolved: "Resolved", closed: "Closed", cancelled: "Cancelled" };
+const EVENT_LABEL: Record<string, string> = { created: "Captured", classified: "Classified", assigned: "Assignment changed", status: "Status changed", priority: "Priority changed", due: "Due date changed", media: "Media added", marker: "Marker added", marker_changed: "Marker moved", marker_removed: "Marker removed", comment: "Comment", resolved: "Resolved", closed: "Closed", cancelled: "Cancelled" };
 
 export function issuePdfFilename(projectName: string, issueNumber: number) {
   const slug = projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 100).replace(/^-+|-+$/g, "");
@@ -76,6 +77,24 @@ export async function generateIssuePdf(input: IssuePdfInput): Promise<Buffer> {
   ensure(24); doc.moveDown(0.3); font(true).fontSize(12).fillColor(INK).text(issue.title || t("Capture"), left, doc.y, { width: contentWidth });
   if (issue.details) { font(false).fontSize(10).fillColor(INK).text(issue.details, left, doc.y + 2, { width: contentWidth }); }
 
+  // Drawing location — a human-useful reference: the drawing name, page, an approximate
+  // relative position (NOT raw normalized coordinates), and — when available — a rasterized
+  // crop of the drawing around the marker (captured client-side at placement and stored as a
+  // 'drawing-location' image). The raw x/y stay internal/authoritative but are never shown.
+  // This section can never fail PDF generation: a missing/broken snapshot falls back to text.
+  if (issue.documentTitle && issue.drawingPage) {
+    heading(t("Drawing location"));
+    const position = (typeof issue.drawingX === "number" && typeof issue.drawingY === "number")
+      ? ` · ${t("Approx. position")}: ${t(markerZoneKey(issue.drawingX, issue.drawingY))}` : "";
+    font(false).fontSize(10).fillColor(INK).text(`${issue.documentTitle} · ${t("Page")} ${issue.drawingPage}${position}`, left, doc.y, { width: contentWidth });
+    const snapshot = input.media.find((m) => m.role === "drawing-location" && m.bytes && (m.mimeType === "image/png" || m.mimeType === "image/jpeg"));
+    if (snapshot) {
+      ensure(230); doc.y += 4;
+      try { doc.image(snapshot.bytes as Buffer, left, doc.y, { fit: [contentWidth, 220], align: "center" }); doc.y += 226; }
+      catch { /* a broken snapshot never fails the PDF — the textual reference above stands */ }
+    }
+  }
+
   const renderMedia = (list: IssuePdfMedia[]) => {
     for (const item of list) {
       const embeddable = item.bytes && (item.mimeType === "image/jpeg" || item.mimeType === "image/png");
@@ -92,7 +111,8 @@ export async function generateIssuePdf(input: IssuePdfInput): Promise<Buffer> {
     }
   };
 
-  const evidence = input.media.filter((m) => m.role !== "resolution");
+  // Evidence excludes the resolution set and the drawing-location snapshot (shown above).
+  const evidence = input.media.filter((m) => m.role !== "resolution" && m.role !== "drawing-location");
   if (evidence.length) { heading(t("Evidence")); renderMedia(evidence); }
 
   if (issue.status === "Resolved" || issue.status === "Closed") {

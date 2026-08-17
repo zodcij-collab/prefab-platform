@@ -5,6 +5,50 @@ import { join } from "node:path";
 import { attentionReasons, canTransition, isOverdue, issueMatchesQuery, isValidType, mergePendingFiles, needsClassification, nextIssueNumber, removePendingFile, visibleAttentionReasons, ALL_ISSUE_TYPES, ISSUE_CAPTURE_MAX_FILES, ISSUE_STATUSES, ISSUE_TYPES } from "../lib/issues.ts";
 import { issueMediaKind, storeUpload, validateUpload } from "../lib/storage.ts";
 import { portalText } from "../data/portal-i18n.ts";
+import { clampUnit, isValidMarker, markerAppearance, markerPassesFilter } from "../lib/issues.ts";
+import { MARKER_FILTERS, markerZoneKey, drawingBackHref } from "../lib/issues.ts";
+
+test("§14-T: Sprint 14 drawing/marker strings are localized in LV and RU (no English fallback)", () => {
+  for (const key of ["Drawings", "Drawing", "Back to drawings", "Show on drawing", "Move on drawing", "Remove location", "Set location on drawing", "Drawing location", "On drawing", "Place marker", "Save location", "Create Defect", "Create Task", "Marker added", "Marker moved", "Marker removed", "Loading drawing…", "Fit", "Zoom in", "Active", "Defects", "Tasks", "Resolved/Closed"]) {
+    assert.notEqual(portalText("lv", key), key, `LV missing: ${key}`);
+    assert.notEqual(portalText("ru", key), key, `RU missing: ${key}`);
+  }
+});
+
+test("§14-A: normalized marker validation — page≥1 integer, x/y within 0..1", () => {
+  assert.equal(isValidMarker(1, 0, 0), true);
+  assert.equal(isValidMarker(3, 0.5, 0.5), true);
+  assert.equal(isValidMarker(1, 1, 1), true);
+  assert.equal(isValidMarker(0, 0.5, 0.5), false, "page must be ≥1");
+  assert.equal(isValidMarker(1.5, 0.5, 0.5), false, "page must be integer");
+  assert.equal(isValidMarker(1, -0.01, 0.5), false, "x below 0");
+  assert.equal(isValidMarker(1, 1.01, 0.5), false, "x above 1");
+  assert.equal(isValidMarker(1, 0.5, NaN), false);
+  assert.equal(isValidMarker(1, "0.5", 0.5), false, "coords must be numbers, not strings");
+  assert.equal(clampUnit(1.2), 1); assert.equal(clampUnit(-0.2), 0); assert.equal(clampUnit(0.4), 0.4);
+});
+
+test("§14-O/P/N: marker appearance — cancelled hidden, terminal subdued, critical emphasised", () => {
+  assert.equal(markerAppearance({ status: "Cancelled", priority: "Critical" }), "hidden");
+  assert.equal(markerAppearance({ status: "Resolved", priority: "Critical" }), "subdued");
+  assert.equal(markerAppearance({ status: "Closed", priority: "Normal" }), "subdued");
+  assert.equal(markerAppearance({ status: "Open", priority: "Critical" }), "critical");
+  assert.equal(markerAppearance({ status: "In progress", priority: "Normal" }), "open");
+  assert.equal(markerAppearance({ status: "Captured", priority: "High" }), "open");
+});
+
+test("§14-7: marker overlay filters — active default, cancelled always hidden", () => {
+  const defect = (over = {}) => ({ status: "Open", type: "Defect", priority: "Normal", ...over });
+  assert.equal(markerPassesFilter(defect(), "active"), true);
+  assert.equal(markerPassesFilter(defect({ status: "Closed" }), "active"), false);
+  assert.equal(markerPassesFilter(defect({ status: "Cancelled" }), "active"), false);
+  assert.equal(markerPassesFilter(defect({ status: "Cancelled" }), "resolved"), false, "cancelled hidden in every mode");
+  assert.equal(markerPassesFilter(defect({ type: "Task" }), "defects"), false);
+  assert.equal(markerPassesFilter(defect({ type: "Task" }), "tasks"), true);
+  assert.equal(markerPassesFilter(defect({ priority: "Critical" }), "critical"), true);
+  assert.equal(markerPassesFilter(defect({ status: "Resolved" }), "resolved"), true);
+  assert.equal(markerPassesFilter(defect({ status: "Resolved" }), "active"), false);
+});
 
 test("§1A: a PDF is an accepted issue attachment type and maps to the 'document' kind", () => {
   assert.equal(validateUpload(new File([new Uint8Array([1, 2, 3])], "drawing.pdf", { type: "application/pdf" }), "issues"), ".pdf");
@@ -162,4 +206,72 @@ test("issue list query matches number (#12 / 12), title, type and assignee", () 
   assert.ok(issueMatchesQuery(issue, "anna"));
   assert.ok(issueMatchesQuery(issue, ""), "empty query matches all");
   assert.equal(issueMatchesQuery(issue, "beam"), false);
+});
+
+// ── Sprint 14 acceptance fix pack ─────────────────────────────────────────────
+const mk = (over: Record<string, unknown> = {}) => ({ status: "Open", type: "Defect", priority: "Normal", ...over });
+
+test("§fp-D: 'active' is the default filter and its semantics are unchanged (open only, no cancelled)", () => {
+  assert.equal(MARKER_FILTERS[0], "active", "Active remains the default (first) filter");
+  assert.ok(MARKER_FILTERS.includes("all"), "the new 'all' filter is registered");
+  assert.equal(markerPassesFilter(mk(), "active"), true);
+  assert.equal(markerPassesFilter(mk({ status: "Resolved" }), "active"), false);
+  assert.equal(markerPassesFilter(mk({ status: "Closed" }), "active"), false);
+  assert.equal(markerPassesFilter(mk({ status: "Cancelled" }), "active"), false);
+});
+
+test("§fp-C: 'all' shows every marker record — active, resolved, closed AND cancelled", () => {
+  for (const status of ["Open", "In progress", "Resolved", "Closed", "Cancelled"]) {
+    assert.equal(markerPassesFilter(mk({ status }), "all"), true, `all includes ${status}`);
+  }
+  // and it does not depend on type/priority
+  assert.equal(markerPassesFilter(mk({ type: "Task", priority: "Low", status: "Cancelled" }), "all"), true);
+});
+
+test("§fp-E: cancelled markers are subdued, never active — appearance 'hidden' and excluded from every non-'all' filter", () => {
+  assert.equal(markerAppearance(mk({ status: "Cancelled", priority: "Critical" })), "hidden", "cancelled never renders as active/critical");
+  for (const f of ["active", "defects", "tasks", "critical", "resolved"] as const) {
+    assert.equal(markerPassesFilter(mk({ status: "Cancelled" }), f), false, `cancelled hidden under '${f}'`);
+  }
+  assert.equal(markerPassesFilter(mk({ status: "Cancelled" }), "all"), true, "only 'all' surfaces cancelled (subdued)");
+});
+
+test("§fp: marker zone key is a stable 3×3 relative position, never raw coordinates", () => {
+  assert.equal(markerZoneKey(0.1, 0.1), "top-left");
+  assert.equal(markerZoneKey(0.5, 0.1), "top-center");
+  assert.equal(markerZoneKey(0.9, 0.1), "top-right");
+  assert.equal(markerZoneKey(0.1, 0.5), "mid-left");
+  assert.equal(markerZoneKey(0.5, 0.5), "center");
+  assert.equal(markerZoneKey(0.9, 0.9), "bottom-right");
+  assert.equal(markerZoneKey(-1, 2), "bottom-left", "out-of-range values are clamped");
+});
+
+test("§fp-A/B: contextual drawing Back — a return issue routes back to that issue, otherwise to the drawings list", () => {
+  assert.equal(drawingBackHref("p1", 42), "/portal/projects/p1/issues/42", "A: entered from an issue → back to that issue");
+  assert.equal(drawingBackHref("p1", null), "/portal/projects/p1/drawings", "B: entered from Drawings → back to Drawings");
+  assert.equal(drawingBackHref("p1", undefined), "/portal/projects/p1/drawings");
+});
+
+test("§fp-L: Access & Roles + fix-pack strings are fully localized in LV and RU (no English fallback)", () => {
+  const keys = [
+    "All", "Back to issue", "Approx. position", "top-left", "center", "bottom-right",
+    "Access & roles", "Administration", "Platform access", "Users", "Name", "Email", "Role", "Status", "Created",
+    "Manage", "Add user", "Director and Administrator controls", "Current account", "Save",
+    "Account active", "Account inactive", "Manage project access",
+    "Director", "Administrator", "Project Manager", "Foreman", "Employee",
+    "Global role has access to all projects.", "Access level", "Role default", "Read-only", "Full access", "No project access", "Custom",
+    "Password", "Confirm password", "Create user", "Save user", "Saving…",
+    "Role permissions do not automatically grant access to projects.",
+    "After creating the user, open “Manage project access” below to grant access to specific projects.",
+    "No project access yet",
+    "Deactivate", "Reactivate", "Deactivate user?", "Deactivate user", "Reactivate user", "Account access",
+    "You cannot deactivate your own currently authenticated account.",
+  ];
+  for (const key of keys) {
+    assert.notEqual(portalText("lv", key), key, `LV missing: ${key}`);
+    assert.notEqual(portalText("ru", key), key, `RU missing: ${key}`);
+  }
+  // distinct-context keys must NOT collide with the marker-filter "Active"/"Inactive"
+  assert.equal(portalText("ru", "Account active"), "Активен");
+  assert.equal(portalText("ru", "Active"), "Активные", "marker-filter 'Active' keeps its own translation");
 });

@@ -29,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const pdf = await generateIssuePdf({
     projectName: project.name, language: await getPortalLanguage(), generatedBy: user.name, today: appToday(),
-    issue: { issueNumber: issue.issueNumber, type: issue.type, status: issue.status, priority: issue.priority, title: issue.title, details: issue.details, classified: issue.classified, installationZoneName: issue.installationZoneName, elementCode: issue.elementCode, assignedTo: issue.assignedTo, dueDate: issue.dueDate, createdBy: issue.createdBy, createdAt: issue.createdAt, resolution: issue.resolution, resolvedBy: issue.resolvedBy, resolvedAt: issue.resolvedAt, closedBy: issue.closedBy, closedAt: issue.closedAt, cancelReason: issue.cancelReason },
+    issue: { issueNumber: issue.issueNumber, type: issue.type, status: issue.status, priority: issue.priority, title: issue.title, details: issue.details, classified: issue.classified, installationZoneName: issue.installationZoneName, elementCode: issue.elementCode, assignedTo: issue.assignedTo, dueDate: issue.dueDate, createdBy: issue.createdBy, createdAt: issue.createdAt, resolution: issue.resolution, resolvedBy: issue.resolvedBy, resolvedAt: issue.resolvedAt, closedBy: issue.closedBy, closedAt: issue.closedAt, cancelReason: issue.cancelReason, documentTitle: issue.documentTitle, drawingPage: issue.drawingPage, drawingX: issue.drawingX, drawingY: issue.drawingY },
     media,
     events: listIssueEvents(issue.id).map((e) => ({ kind: e.kind, detail: e.detail, actor: e.actor, createdAt: e.createdAt })),
   });

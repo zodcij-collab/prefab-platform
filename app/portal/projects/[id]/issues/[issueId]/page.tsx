@@ -11,8 +11,9 @@ import { appToday, formatAppDateTime } from "../../../../../../lib/datetime";
 import { getPortalLanguage } from "../../../../../../lib/portal-locale";
 import { portalText } from "../../../../../../data/portal-i18n";
 import { addIssueMediaAction, assignIssueAction, cancelIssueAction, closeIssueAction, commentIssueAction, resolveIssueAction, statusIssueAction } from "../actions";
+import { clearIssueMarkerAction } from "../../drawings/actions";
 
-const EVENT_LABEL: Record<string, string> = { created: "Captured", classified: "Classified", assigned: "Assignment changed", status: "Status changed", priority: "Priority changed", due: "Due date changed", media: "Media added", comment: "Comment", resolved: "Resolved", closed: "Closed", cancelled: "Cancelled" };
+const EVENT_LABEL: Record<string, string> = { created: "Captured", classified: "Classified", assigned: "Assignment changed", status: "Status changed", priority: "Priority changed", due: "Due date changed", media: "Media added", marker: "Marker added", marker_changed: "Marker moved", marker_removed: "Marker removed", comment: "Comment", resolved: "Resolved", closed: "Closed", cancelled: "Cancelled" };
 
 export default async function IssueDetailPage({ params }: { params: Promise<{ id: string; issueId: string }> }) {
   const { id, issueId } = await params;
@@ -31,7 +32,7 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
   const today = appToday(), overdue = isOverdue(issue.dueDate, issue.status, today);
   const terminal = issue.status === "Closed" || issue.status === "Cancelled";
   const nextStatuses = ["Open", "Assigned", "In progress"].filter((s) => canTransition(issue.status, s));
-  const evidence = media.filter((m) => m.role !== "resolution"), resolutionMedia = media.filter((m) => m.role === "resolution");
+  const evidence = media.filter((m) => m.role !== "resolution" && m.role !== "drawing-location"), resolutionMedia = media.filter((m) => m.role === "resolution");
   const mediaTag = (m: typeof media[number]) => m.kind === "video"
     ? <video key={m.id} className="os-issue-media" controls preload="metadata" src={`/portal/files/issue-media/${m.id}`} />
     : m.kind === "document"
@@ -57,7 +58,14 @@ export default async function IssueDetailPage({ params }: { params: Promise<{ id
           <div><span>{t("Responsible")}</span><strong>{issue.assignedTo || t("Unassigned")}</strong></div>
           <div><span>{t("Due date")}</span><strong className={overdue ? "os-overdue" : ""}>{issue.dueDate || "—"}{overdue ? ` · ${t("Overdue")}` : ""}</strong></div>
           <div><span>{t("Captured by")}</span><strong>{issue.createdBy} · {formatAppDateTime(issue.createdAt)}</strong></div>
+          {issue.documentId && <div><span>{t("Drawing")}</span><strong>{issue.documentTitle || `#${issue.documentId}`} · {t("Page")} {issue.drawingPage}</strong></div>}
         </div>
+        {issue.documentId
+          ? <div className="os-drawing-actions">
+              <a className="os-secondary-action" href={`/portal/projects/${id}/drawings/${issue.documentId}?page=${issue.drawingPage}&issue=${issue.id}`}>📐 {t("Show on drawing")}</a>
+              {canManage && <><a className="os-secondary-action" href={`/portal/projects/${id}/drawings/${issue.documentId}?page=${issue.drawingPage}&setIssue=${issue.id}`}>{t("Move on drawing")}</a><form action={clearIssueMarkerAction} className="os-inline-form"><input type="hidden" name="projectId" value={id} /><input type="hidden" name="issueId" value={issue.id} /><button className="os-delete-trigger" type="submit">{t("Remove location")}</button></form></>}
+            </div>
+          : canManage && !terminal && <div className="os-drawing-actions"><a className="os-secondary-action" href={`/portal/projects/${id}/drawings?setIssue=${issue.id}`}>📐 {t("Set location on drawing")}</a></div>}
         {issue.details && <p className="os-issue-details">{issue.details}</p>}
         {evidence.length > 0 && <div className="os-issue-media-grid">{evidence.map(mediaTag)}</div>}
       </article>

@@ -9,11 +9,27 @@ import { captureIssueAction, type CaptureState } from "../../app/portal/projects
 // FileList is rebuilt via DataTransfer on every change, so the submitted payload always matches
 // the visible list. Removing a pending file uploads nothing for it. Persists only on Save; the
 // submit button disables while pending so a double-tap cannot create two issues.
-export function IssueCaptureForm({ projectId, language }: { projectId: string; language: PortalLanguage }) {
+export function IssueCaptureForm({ projectId, language, marker, defaultIntent = "Defect" }: { projectId: string; language: PortalLanguage; marker?: { documentId: number; page: number; x: number; y: number; title: string }; defaultIntent?: "Defect" | "Task" }) {
   const t = (v: string) => portalText(language, v);
   const [state, formAction, pending] = useActionState<CaptureState, FormData>(captureIssueAction, { error: "" });
   const [files, setFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Best-effort drawing crop handed over from the viewer (capture-from-drawing) via a same-tab
+  // sessionStorage one-shot. Only used when it matches THIS marker; consumed (removed) on read.
+  // Written straight into the hidden input's DOM value (an external-system update, not React
+  // state) so the client-only sessionStorage read never causes an SSR/hydration mismatch.
+  const snapshotRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!marker) return;
+    try {
+      const raw = sessionStorage.getItem("prefab.drawingSnapshot");
+      if (!raw) return;
+      const s = JSON.parse(raw) as { documentId: number; page: number; x: number; y: number; dataUrl: string };
+      if (snapshotRef.current && s && s.documentId === marker.documentId && s.page === marker.page && Math.abs(s.x - marker.x) < 1e-3 && Math.abs(s.y - marker.y) < 1e-3 && typeof s.dataUrl === "string") snapshotRef.current.value = s.dataUrl;
+      sessionStorage.removeItem("prefab.drawingSnapshot");
+    } catch { /* ignore malformed/unavailable storage */ }
+  }, [marker]);
 
   // Reflect the client list back into the real <input> so the form submits exactly these files.
   const sync = (next: File[]) => {
@@ -34,11 +50,19 @@ export function IssueCaptureForm({ projectId, language }: { projectId: string; l
   return (
     <form action={formAction} className="os-capture-form">
       <input type="hidden" name="projectId" value={projectId} />
+      {marker && <>
+        <input type="hidden" name="documentId" value={marker.documentId} />
+        <input type="hidden" name="drawingPage" value={marker.page} />
+        <input type="hidden" name="drawingX" value={marker.x.toFixed(4)} />
+        <input type="hidden" name="drawingY" value={marker.y.toFixed(4)} />
+        <input type="hidden" name="snapshot" ref={snapshotRef} />
+        <p className="os-capture-marker">📐 {t("On drawing")}: <strong>{marker.title}</strong> · {t("Page")} {marker.page}</p>
+      </>}
       {state.error && <p className="os-form-error" role="alert">{t(state.error)}</p>}
 
       <div className="os-capture-intent" role="radiogroup" aria-label={t("What is this?")}>
-        <label><input type="radio" name="intent" value="Defect" defaultChecked /> {t("Defect / Issue")}</label>
-        <label><input type="radio" name="intent" value="Task" /> {t("Task")}</label>
+        <label><input type="radio" name="intent" value="Defect" defaultChecked={defaultIntent === "Defect"} /> {t("Defect / Issue")}</label>
+        <label><input type="radio" name="intent" value="Task" defaultChecked={defaultIntent === "Task"} /> {t("Task")}</label>
       </div>
 
       <label className="os-capture-media">
