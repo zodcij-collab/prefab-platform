@@ -4,4 +4,7 @@ function format(value:string,options:Intl.DateTimeFormatOptions){return new Intl
 export function formatAppDate(value:string){return format(value,{day:"2-digit",month:"short",year:"numeric"});}
 export function formatAppTime(value:string){return format(value,{hour:"2-digit",minute:"2-digit",hour12:false});}
 export function formatAppDateTime(value:string){return format(value,{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});}
+// Localized European date presentation (DD.MM.YYYY) for user-facing construction documents.
+// Parses the stored ISO date-only string directly (no timezone shift) and never exposes raw ISO.
+export function formatEuroDate(value:string){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(value||"");return m?`${m[3]}.${m[2]}.${m[1]}`:(value||"");}
 export function appToday(){const parts=new Intl.DateTimeFormat("en-GB",{timeZone:APP_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const get=(type:Intl.DateTimeFormatPartTypes)=>parts.find((part)=>part.type===type)?.value??"";return `${get("year")}-${get("month")}-${get("day")}`;}

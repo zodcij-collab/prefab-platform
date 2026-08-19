@@ -135,3 +135,71 @@ export function canManageProjectIssues(user: SessionUser, projectId: string) {
 export function canCommentProjectIssues(user: SessionUser, projectId: string) {
   return canAccessProject(user, projectId) && canProject(user, projectId, "issues.comment");
 }
+
+// ── Sprint 15 ─────────────────────────────────────────────────────────────
+// Personnel/HR is a COMPANY concern (employees are company entities, not project-scoped), so it
+// is gated by role rank — NOT by per-project capabilities. Viewing the register needs Foreman+;
+// managing employees / competency / documents / offboarding needs Project Manager+ (which
+// includes Administrator and Director). This is independent of the two-layer PROJECT access
+// model, and personnel data never rides on platform project access.
+// Operational visibility (Foreman+): identity, position/skills, OVP & qualification validity
+// STATUS, induction status, attendance, relevant safety. This does NOT include the sensitive
+// underlying HR data.
+export function canViewPersonnel(user: SessionUser) {
+  return hasRole(user, "Foreman");
+}
+// Sensitive personal data (personal code, date of birth, emergency contact) and private HR
+// documents are restricted to Project Manager+ (which includes Administrator and Director).
+// Enforced server-side — never surface these fields to an operational (Foreman) viewer.
+export function canViewPersonnelSensitive(user: SessionUser) {
+  return hasRole(user, "Project Manager");
+}
+export function canManagePersonnel(user: SessionUser) {
+  return hasRole(user, "Project Manager");
+}
+export function canViewPersonnelDocuments(user: SessionUser) {
+  return hasRole(user, "Project Manager");
+}
+export function canManagePersonnelDocuments(user: SessionUser) {
+  return canManagePersonnel(user);
+}
+// Operational workwear sizing (jacket / trousers / footwear) is part of the Foreman's normal site
+// duties, so it is editable at the SAME operational scope as personnel visibility (Foreman+, which
+// includes PM/Director/Administrator). These sizes live in the SAFE projection — this deliberately
+// does NOT grant any sensitive HR data (personal code, DOB, emergency contact) or documents.
+export function canManageWorkwear(user: SessionUser) {
+  return canViewPersonnel(user);
+}
+
+// Project-scoped daily operations — assignment of crew, safety induction, attendance, safety
+// records, the Daily Log lifecycle, and site photos. All require project access first.
+export function canAssignProjectPersonnel(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "personnel.assign");
+}
+export function canManageProjectInduction(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "induction.manage");
+}
+export function canViewProjectAttendance(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "attendance.view");
+}
+export function canManageProjectAttendance(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "attendance.manage");
+}
+export function canViewProjectSafety(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "safety.view");
+}
+export function canManageProjectSafety(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "safety.manage");
+}
+export function canViewDailyLog(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "dailylog.view");
+}
+export function canCreateDailyLog(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "dailylog.create");
+}
+export function canConfirmDailyLog(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "dailylog.confirm");
+}
+export function canCaptureSitePhotos(user: SessionUser, projectId: string) {
+  return canAccessProject(user, projectId) && canProject(user, projectId, "sitephotos.capture");
+}

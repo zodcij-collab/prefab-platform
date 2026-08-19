@@ -676,3 +676,149 @@ h3 { font-weight: 760; }
 .os-access-flag{margin-left:8px;padding:1px 7px;font-size:11px;font-weight:700;color:#8a3b12;background:#fdecdd;border:1px solid #f2c79c;border-radius:999px;white-space:nowrap}
 .os-lifecycle-cell{margin-top:8px}
 .os-lifecycle-self{margin:8px 0 0;font-size:12px}
+
+/* ── Sprint 15 — Daily Site Operations & Personnel ─────────────────────────── */
+.os-expiry{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.os-expiry-valid{background:#e6f4ea;color:#1e7a3d;border:1px solid #b7e0c4}
+.os-expiry-expiring{background:#fff5e9;color:#8a5312;border:1px solid #f2d5b0}
+.os-expiry-expired{background:#fdecea;color:#a3271b;border:1px solid #f2b8b0}
+.os-expiry-none{background:#f0f0ee;color:#686868;border:1px solid #dcdcda}
+.os-qual-warn{color:#8a5312}
+.os-employee-photo{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line,#d8d8d8);margin-bottom:8px}
+.os-employee-photo-fallback{display:flex;align-items:center;justify-content:center;background:#f0f0ee;color:#686868;font-size:34px;font-weight:800;letter-spacing:.04em}
+.os-chip-row{display:flex;flex-wrap:wrap;gap:6px}
+.os-chip{background:#f0f0ee;border:1px solid #dcdcda;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+.os-safety-summary{margin:0 0 8px;font-size:13px;color:var(--muted,#686868)}
+.os-attention-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#fff5e9;color:#8a5312;border:1px solid #f2d5b0}
+.os-off-state{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.os-off-notchecked{background:#f0f0ee;color:#686868;border:1px solid #dcdcda}
+.os-off-closed{background:#e6f4ea;color:#1e7a3d;border:1px solid #b7e0c4}
+.os-off-problem{background:#fdecea;color:#a3271b;border:1px solid #f2b8b0}
+.os-section-label{margin:18px 0 6px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#686868)}
+.os-fact-list{margin:0;padding-left:16px;font-size:13px;line-height:1.5}
+.os-attendance-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px}
+.os-checkbox{display:flex;align-items:center;gap:8px}
+/* ── Sprint 15 Fix Pack ─────────────────────────────────────────────────── */
+/* Daily Log / attendance entry-point CTA on the project overview */
+.os-dailylog-cta{border-color:#f2c9b3;background:#fff8f4}
+.os-dailylog-cta .os-panel-head h2{margin:0}
+/* Material delivery read-only cards — full width, no narrow word-by-word column */
+.os-delivery-cards{display:flex;flex-direction:column;gap:12px}
+.os-delivery-card{border:1px solid var(--line,#d8d8d8);border-radius:10px;padding:14px 16px;background:#fff;display:flex;flex-direction:column;gap:6px;min-width:0}
+.os-delivery-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px 16px;flex-wrap:wrap}
+.os-delivery-card-title{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+.os-delivery-card-title strong{font-size:14px;font-weight:800}
+.os-delivery-pdf{flex:none;white-space:nowrap}
+.os-delivery-meta{display:flex;flex-wrap:wrap;gap:2px 16px;font-size:12px;color:var(--muted,#686868);font-weight:600}
+.os-delivery-desc{margin:0;font-size:13px;line-height:1.45}
+.os-delivery-weight{margin:2px 0 0;display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12px;align-items:baseline}
+.os-delivery-weight strong{color:#2f5d3a;font-weight:800;font-variant-numeric:tabular-nums}
+.os-delivery-weight .os-muted{color:var(--muted,#686868)}
+.os-delivery-notes{margin:2px 0 0;font-size:12px;color:var(--muted,#686868);white-space:pre-wrap;line-height:1.4}
+.os-delivery-edit{margin-top:6px;border-top:1px solid #efefec;padding-top:8px}
+.os-delivery-edit>summary{font-weight:800}
+/* Material delivery line items — labelled repeatable editor (MATERIAL | QTY | UNIT | NOTE | ×) */
+/* The item table + save bar must span the full width of the 2-column os-mini-form grid, otherwise
+   they collapse into one narrow column and the table is unusable. */
+.os-mini-form .os-delivery-items,.os-mini-form .os-save-bar{grid-column:1/-1}
+.os-delivery-items{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.os-di-cols{grid-template-columns:minmax(0,2.3fr) 84px 92px minmax(0,1.6fr) 36px}
+.os-di-head{display:grid;grid-template-columns:minmax(0,2.3fr) 84px 92px minmax(0,1.6fr) 36px;gap:8px;padding:0 2px}
+.os-di-head span{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#686868);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-delivery-item-row{display:grid;grid-template-columns:minmax(0,2.3fr) 84px 92px minmax(0,1.6fr) 36px;gap:8px;align-items:end}
+.os-di-cell{display:flex;flex-direction:column;min-width:0}
+.os-di-mlabel{display:none}
+.os-delivery-item-row input,.os-delivery-item-row select{min-height:38px;padding:0 9px;border:1px solid var(--line,#d8d8d8);border-radius:8px;font-size:13px;width:100%;background:#fff}
+.os-di-remove{align-self:end;height:38px;border:1px solid var(--line,#d8d8d8);background:#fff;border-radius:8px;cursor:pointer;color:#a44336;font-size:18px;font-weight:800;line-height:1}
+.os-di-remove:hover{background:#fbece9;border-color:#e4b9b1}
+.os-di-add{align-self:flex-start;margin-top:4px}
+.os-di-hint{margin:2px 0 0}
+.os-di-weight{color:#2f5d3a;font-weight:700}
+/* Delivery record actions (single-delivery PDF + edit) */
+.os-record-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+/* Delivery Plan multi-select → combined PDF */
+.os-plan-selector{margin-top:14px;border-top:1px solid var(--line,#d8d8d8);padding-top:12px}
+.os-plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.os-plan-selectall{border:0;background:none;color:var(--orange,#f26522);font-weight:800;font-size:11px;cursor:pointer;padding:0}
+.os-plan-list{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.os-plan-row{display:grid;grid-template-columns:20px 130px minmax(0,160px) minmax(0,1fr);gap:10px;align-items:center;padding:7px 9px;border:1px solid var(--line,#d8d8d8);border-radius:8px;cursor:pointer;font-size:13px}
+.os-plan-row:hover{border-color:#c9c9c6;background:#fafafa}
+.os-plan-row input{width:16px;height:16px;cursor:pointer}
+.os-plan-when{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.os-plan-sup{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-plan-desc{color:var(--muted,#686868);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-plan-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:8px}
+/* Save-delivery button should be a normal-height action, not full-height */
+.os-save-bar .os-primary-action{min-height:40px;padding:0 18px}
+@media(max-width:640px){
+  .os-di-head{display:none}
+  .os-delivery-item-row{grid-template-columns:1fr 1fr;gap:8px 10px;padding:10px;border:1px solid var(--line,#d8d8d8);border-radius:10px;background:#fafafa;align-items:start}
+  .os-di-name,.os-di-note{grid-column:1/-1}
+  .os-di-remove{grid-column:1/-1;justify-self:end;width:auto;padding:0 12px}
+  .os-di-mlabel{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#686868);margin-bottom:3px}
+  .os-plan-row{grid-template-columns:20px 1fr;gap:3px 10px}
+  .os-plan-sup,.os-plan-desc{grid-column:2;white-space:normal}
+}
+/* Material delivery line items — read-only list on a saved delivery */
+.os-delivery-item-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
+.os-delivery-item-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px}
+.os-delivery-item-list li strong{font-weight:700}
+.os-di-qty-badge{font-variant-numeric:tabular-nums;font-weight:800;color:#2f5d3a;background:#edf7ef;border:1px solid #cfe6d5;border-radius:999px;padding:1px 8px;font-size:11px}
+/* "Include in daily report" — a clearly intentional control */
+.os-report-include{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line,#d8d8d8);border-radius:10px;background:#fafafa;font-weight:700;cursor:pointer}
+.os-report-include input{width:18px;height:18px;accent-color:#2f7d43;cursor:pointer}
+.os-report-include:has(input:checked){border-color:#cfe6d5;background:#edf7ef;color:#2f5d3a}
+/* Per-photo Daily-Report inclusion toggle pill */
+.os-report-toggle{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800;border:1px solid transparent}
+.os-report-toggle.is-on{background:#edf7ef;color:#2f5d3a;border-color:#cfe6d5}
+.os-report-toggle.is-off{background:#f0f0ee;color:#686868;border-color:#dcdcda}
+button.os-report-toggle{cursor:pointer}
+button.os-report-toggle:hover{filter:brightness(.97)}
+/* Daily Log site-photo preview — compact thumbnails */
+.os-photo-grid-compact{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.os-photo-grid-compact .os-photo-image{aspect-ratio:4/3;object-fit:cover;width:100%;border-radius:8px;border:1px solid var(--line,#d8d8d8)}
+.os-photo-grid-compact article>div{display:flex;flex-direction:column;gap:1px;font-size:12px;margin-top:3px}
+.os-photo-grid-compact article>div span{color:var(--muted,#686868)}
+/* Reopen disclosure — discoverable but deliberate */
+.os-reopen-control summary{cursor:pointer;font-weight:800;color:#a44336}
+.os-reopen-control .os-help{margin:8px 0}
+/* ── Site Photos gallery (uniform thumbnails + filters + lightbox) ───────── */
+.os-photo-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:6px 0 14px}
+.os-photo-toolbar label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:800;letter-spacing:.02em;color:var(--muted,#686868)}
+.os-photo-toolbar input,.os-photo-toolbar select{min-height:38px;padding:0 8px;border:1px solid var(--line,#d8d8d8);border-radius:8px;font-size:13px;background:#fff}
+.os-photo-count{margin-left:auto;align-self:center;font-size:12px;font-weight:800;color:var(--muted,#686868);font-variant-numeric:tabular-nums}
+.os-photo-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.os-photo-card{display:flex;flex-direction:column;border:1px solid var(--line,#d8d8d8);border-radius:10px;overflow:hidden;background:#fff}
+.os-thumb-link{display:block;line-height:0;background:#ecece9}
+.os-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;transition:opacity .12s}
+.os-thumb-link:hover .os-thumb{opacity:.9}
+.os-photo-card-meta{display:flex;flex-direction:column;gap:4px;padding:8px 10px}
+.os-photo-when{font-size:11px;font-weight:700;color:var(--muted,#686868);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-photo-caption{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.os-photo-card-meta form,.os-photo-card-meta .os-report-toggle{align-self:flex-start}
+.os-load-more{display:flex;justify-content:center;margin:16px 0}
+/* Lightbox — pure-CSS :target overlay; full uncropped image (object-fit: contain) */
+.os-lightbox{display:none;position:fixed;inset:0;z-index:1000;padding:24px;align-items:center;justify-content:center}
+.os-lightbox:target{display:flex}
+.os-lightbox-backdrop{position:absolute;inset:0;background:rgba(18,18,18,.78);cursor:zoom-out}
+.os-lightbox-inner{position:relative;z-index:1;background:#fff;border-radius:12px;max-width:min(920px,94vw);max-height:92vh;overflow:auto;display:flex;flex-direction:column}
+.os-lightbox-img{width:100%;max-height:64vh;object-fit:contain;background:#111;border-radius:12px 12px 0 0}
+.os-lightbox-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.os-lightbox-caption{margin:0;font-size:15px;font-weight:700;word-break:break-word}
+.os-lightbox-x{position:absolute;top:8px;right:10px;z-index:2;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:22px;font-weight:800;text-decoration:none;line-height:1}
+.os-lightbox-x:hover{background:rgba(0,0,0,.82)}
+@media(max-width:600px){.os-photo-gallery{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}.os-photo-count{margin-left:0}}
+/* Save-feedback primitive — SAVE → SAVING… → ✓ Changes saved / ✕ Could not save / Unsaved changes */
+.os-save-bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:8px}
+.os-save-status{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em}
+.os-form-saving{color:var(--muted,#686868)}
+.os-form-dirty{color:#8a5312}
+/* Today dashboard */
+.os-today-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.os-today-tile{display:flex;flex-direction:column;gap:2px;padding:16px;border:1px solid var(--line,#d8d8d8);border-radius:10px;background:#fff;text-decoration:none;color:inherit}
+a.os-today-tile:hover{border-color:var(--orange,#f26522)}
+.os-today-value{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.os-today-label{font-size:12px;color:var(--muted,#686868)}
+.os-today-emph{border-color:#f2b8b0;background:#fdf4f2}
+.os-today-emph .os-today-value{color:#a3271b}
+@media(max-width:600px){.os-today-grid{grid-template-columns:repeat(2,1fr)}.os-employee-photo{width:96px;height:96px}.os-attendance-controls{flex-direction:column;align-items:stretch}}

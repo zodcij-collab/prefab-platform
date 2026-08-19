@@ -21,6 +21,13 @@ export const PROJECT_CAPABILITIES = [
   "workforce.view", "workforce.manage",
   "loads.view", "loads.manage", "loads.approve_exception",
   "issues.view", "issues.capture", "issues.manage", "issues.comment",
+  // Sprint 15 — project-scoped daily operations. (Personnel/HR capabilities are company-level
+  // and modelled by role in lib/permissions.ts, not per-project.)
+  "personnel.assign", "induction.manage",
+  "attendance.view", "attendance.manage",
+  "safety.view", "safety.manage",
+  "dailylog.view", "dailylog.create", "dailylog.confirm",
+  "sitephotos.capture",
 ] as const;
 export type ProjectCapability = (typeof PROJECT_CAPABILITIES)[number];
 export type CapabilityMap = Partial<Record<ProjectCapability, boolean>>;
@@ -39,7 +46,8 @@ export const BASE_ROLE_CAPABILITIES: Record<Role, ResolvedCapabilities> = {
   Director: ALL_CAPABILITIES,
   Administrator: ALL_CAPABILITIES,
   "Project Manager": ALL_CAPABILITIES,
-  Foreman: caps(["project.view", "reports.view", "reports.create", "reports.submit", "documents.view", "elements.view", "elements.operate", "workforce.view", "loads.view", "loads.manage", "issues.view", "issues.capture", "issues.manage", "issues.comment"]),
+  Foreman: caps(["project.view", "reports.view", "reports.create", "reports.submit", "documents.view", "elements.view", "elements.operate", "workforce.view", "loads.view", "loads.manage", "issues.view", "issues.capture", "issues.manage", "issues.comment",
+    "personnel.assign", "induction.manage", "attendance.view", "attendance.manage", "safety.view", "safety.manage", "dailylog.view", "dailylog.create", "dailylog.confirm", "sitephotos.capture"]),
   Employee: caps(["project.view"]),
 };
 

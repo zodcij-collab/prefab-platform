@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../../../lib/auth";
 import type { SessionUser } from "../../../lib/auth";
 import { canAccessProject, canManageProjectLifecycle, canManageProjectOperations, canManageProjectWorkforce, canManageProjects } from "../../../lib/permissions";
-import { archiveProject, assignProjectMember, closeProjectAssignment, createProject, deleteDelivery, deleteProjectIssue, getDelivery, getProject, getProjectByName, getProjectIssue, listEmployees, listProjectMembers, logActivity, recordProjectAssignment, removeProjectMember, restoreProject, runTransaction, saveDelivery, saveProjectIssue, unassignProjectIssues, updateProject } from "../../../lib/repositories";
+import { archiveProject, assignProjectMember, closeProjectAssignment, createProject, deleteDelivery, deleteProjectIssue, getDelivery, getProject, getProjectByName, getProjectIssue, listEmployees, listProjectMembers, logActivity, recordProjectAssignment, removeProjectMember, restoreProject, runTransaction, saveDelivery, setDeliveryItems, saveProjectIssue, unassignProjectIssues, updateProject } from "../../../lib/repositories";
+import { normalizeDeliveryItems, parseDeliveryItemsForm } from "../../../lib/deliveries";
+import { runSave, type SaveState } from "../../../lib/form-state";
 import { appToday } from "../../../lib/datetime";
 
 const PROJECT_STATUSES = ["Planning", "Active", "On hold", "Completed"];
@@ -84,10 +86,21 @@ export async function removeMemberAction(data: FormData) {
 
 export async function saveDeliveryAction(data: FormData) {
   const user=await operationsUser(); const projectId=value(data,"projectId"); assertWritableProject(user,projectId); const id=positiveId(data,"id"); const status=value(data,"status"); if(!getProject(projectId)||!DELIVERY_STATUSES.includes(status)) throw new Error("Invalid delivery."); if(id && getDelivery(id)?.projectId!==projectId) throw new Error("Delivery not found.");
-  const input={id,projectId,deliveryDate:value(data,"deliveryDate"),deliveryTime:value(data,"deliveryTime"),supplier:limited(data,"supplier",160),loadRef:limited(data,"loadRef",80),description:limited(data,"description",500),status,notes:limited(data,"notes",2000)}; if(!input.deliveryDate||!input.supplier||!input.description) throw new Error("Delivery date, supplier and description are required."); runTransaction(()=>{saveDelivery(input);
-  logActivity({userId:user.id,actor:user.name,action:id?"Updated delivery":"Created delivery",entityType:"project",entityId:projectId,details:`${input.loadRef} · ${status}`});}); revalidatePath(`/portal/projects/${projectId}`);
+  const input={id,projectId,deliveryDate:value(data,"deliveryDate"),deliveryTime:value(data,"deliveryTime"),supplier:limited(data,"supplier",160),loadRef:limited(data,"loadRef",80),description:limited(data,"description",500),status,notes:limited(data,"notes",2000)}; if(!input.deliveryDate||!input.supplier||!input.description) throw new Error("Delivery date, supplier and description are required.");
+  // Line items come from the editor as one atomic itemsJson payload (falls back to the legacy
+  // parallel arrays for older clients). Blank-name rows are dropped by the normaliser, so a
+  // delivery can still be saved with no items. This makes a header-only edit preserve every item's
+  // unit exactly — parallel-array index misalignment can no longer silently rewrite units.
+  const items=normalizeDeliveryItems(parseDeliveryItemsForm(data));
+  runTransaction(()=>{const result=saveDelivery(input);const deliveryId=id??Number(result.lastInsertRowid);setDeliveryItems(deliveryId,items);
+  logActivity({userId:user.id,actor:user.name,action:id?"Updated delivery":"Created delivery",entityType:"project",entityId:projectId,details:`${input.loadRef} · ${status} · ${items.length} ${items.length===1?"item":"items"}`});}); revalidatePath(`/portal/projects/${projectId}`);
 }
 
+// State-returning wrapper for the SaveForm primitive (Material Delivery add/edit revalidates in
+// place, so ✓ Changes saved can show without navigating away and losing sibling form state).
+export async function saveDeliveryFormAction(_state: SaveState, data: FormData): Promise<SaveState> {
+  return runSave(() => saveDeliveryAction(data));
+}
 export async function deleteDeliveryAction(data: FormData) {
   const user=await projectManager(); const projectId=value(data,"projectId"); assertWritableProject(user,projectId); const id=positiveId(data,"id"); const delivery=id?getDelivery(id):undefined; if(!delivery||delivery.projectId!==projectId) throw new Error("Delivery not found."); if(!["Planned","Cancelled"].includes(delivery.status)) throw new Error("Only planned or cancelled deliveries can be deleted."); runTransaction(()=>{deleteDelivery(id!,projectId);logActivity({userId:user.id,actor:user.name,action:"Deleted delivery",entityType:"project",entityId:projectId,details:delivery.loadRef||delivery.description});}); revalidatePath(`/portal/projects/${projectId}`);
 }

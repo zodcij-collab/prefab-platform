@@ -641,3 +641,237 @@ if (!drawingMarkers) {
   db.exec("CREATE INDEX IF NOT EXISTS issues_document_marker_idx ON issues(document_id, drawing_page) WHERE document_id IS NOT NULL;");
   db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint14_drawing_markers");
 }
+
+// ── Sprint 15 — Daily Site Operations & Personnel V1 ─────────────────────────────
+// All additive + idempotent. Personnel EXTENDS the existing `employees` entity (never a second
+// person table) and adds competency/lifecycle satellites; the Daily Log is a NEW aggregating
+// entity that snapshots existing facts on confirmation (the manual `reports` entity is left
+// untouched). Employee project assignment stays separate from user platform access.
+const employeeCols15 = new Set((db.prepare("PRAGMA table_info(employees)").all() as { name: string }[]).map((c) => c.name));
+const addEmployeeColumn = (name: string, ddl: string) => { if (!employeeCols15.has(name)) db.exec(`ALTER TABLE employees ADD COLUMN ${ddl}`); };
+addEmployeeColumn("date_of_birth", "date_of_birth TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("personal_code", "personal_code TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("photo_stored_path", "photo_stored_path TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("photo_mime_type", "photo_mime_type TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("emergency_contact", "emergency_contact TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("emergency_contact_phone", "emergency_contact_phone TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("jacket_size", "jacket_size TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("trousers_size", "trousers_size TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("shoe_size", "shoe_size TEXT NOT NULL DEFAULT ''");
+// employment_status carries the lifecycle (Active / Offboarding / Inactive) — no new column.
+addEmployeeColumn("termination_reason", "termination_reason TEXT NOT NULL DEFAULT ''");
+addEmployeeColumn("termination_comment", "termination_comment TEXT NOT NULL DEFAULT ''");
+
+const sprint15Personnel = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint15_personnel");
+if (!sprint15Personnel) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS employee_skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      skill TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(employee_id, skill),
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS employee_skills_skill_idx ON employee_skills(skill);
+
+    CREATE TABLE IF NOT EXISTS employee_ovp (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      exam_date TEXT NOT NULL DEFAULT '',
+      valid_until TEXT NOT NULL DEFAULT '',
+      provider TEXT NOT NULL DEFAULT '',
+      comment TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS employee_ovp_employee_idx ON employee_ovp(employee_id);
+
+    CREATE TABLE IF NOT EXISTS employee_qualifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      custom_title TEXT NOT NULL DEFAULT '',
+      cert_number TEXT NOT NULL DEFAULT '',
+      organization TEXT NOT NULL DEFAULT '',
+      issue_date TEXT NOT NULL DEFAULT '',
+      valid_until TEXT NOT NULL DEFAULT '',
+      comment TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS employee_qualifications_employee_idx ON employee_qualifications(employee_id);
+
+    -- Private employee documents (OVP / qualification / induction / safety / general). A single
+    -- generic relation serves every satellite; served only via the authenticated file route.
+    CREATE TABLE IF NOT EXISTS employee_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      relation_type TEXT NOT NULL DEFAULT 'general',
+      relation_id INTEGER,
+      title TEXT NOT NULL DEFAULT '',
+      original_filename TEXT NOT NULL DEFAULT '',
+      stored_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT NOT NULL DEFAULT '',
+      uploaded_by_id INTEGER,
+      uploaded_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS employee_documents_rel_idx ON employee_documents(employee_id, relation_type, relation_id);
+
+    -- Project-specific safety induction (Employee x Project). Induction on one project never
+    -- satisfies another → one row per (project, employee).
+    CREATE TABLE IF NOT EXISTS project_safety_inductions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0,
+      completion_date TEXT NOT NULL DEFAULT '',
+      conducted_by TEXT NOT NULL DEFAULT '',
+      comment TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(project_id, employee_id),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS employee_safety_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      project_id TEXT NOT NULL DEFAULT '',
+      occurred_at TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT '',
+      severity TEXT NOT NULL DEFAULT 'Observation',
+      description TEXT NOT NULL DEFAULT '',
+      action_taken TEXT NOT NULL DEFAULT '',
+      recorded_by_id INTEGER,
+      recorded_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS employee_safety_employee_idx ON employee_safety_records(employee_id, occurred_at);
+
+    -- Lightweight offboarding V1: a checklist + termination info. Never deletes the employee.
+    CREATE TABLE IF NOT EXISTS employee_offboarding (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'In progress',
+      started_by_id INTEGER,
+      started_by TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      termination_date TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      reason_comment TEXT NOT NULL DEFAULT '',
+      completed_by_id INTEGER,
+      completed_by TEXT NOT NULL DEFAULT '',
+      completed_at TEXT NOT NULL DEFAULT '',
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS employee_offboarding_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      offboarding_id INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'Not checked',
+      comment TEXT NOT NULL DEFAULT '',
+      checked_by TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(offboarding_id) REFERENCES employee_offboarding(id) ON DELETE CASCADE
+    );
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint15_personnel");
+}
+
+const sprint15DailyOps = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint15_daily_ops");
+if (!sprint15DailyOps) {
+  db.exec(`
+    -- Daily Site Log: one per (project, date). DRAFT aggregates live facts; CONFIRMED persists an
+    -- immutable snapshot_json so the historical report never changes when live data later changes.
+    CREATE TABLE IF NOT EXISTS daily_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      log_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      shift_start TEXT NOT NULL DEFAULT '07:00',
+      shift_end TEXT NOT NULL DEFAULT '16:00',
+      work_performed TEXT NOT NULL DEFAULT '',
+      delays TEXT NOT NULL DEFAULT '',
+      delay_reason TEXT NOT NULL DEFAULT '',
+      site_events TEXT NOT NULL DEFAULT '',
+      equipment_note TEXT NOT NULL DEFAULT '',
+      materials_note TEXT NOT NULL DEFAULT '',
+      foreman_comment TEXT NOT NULL DEFAULT '',
+      responsible_user_id INTEGER,
+      responsible_name TEXT NOT NULL DEFAULT '',
+      snapshot_json TEXT NOT NULL DEFAULT '',
+      created_by_id INTEGER,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      confirmed_by_id INTEGER,
+      confirmed_by TEXT NOT NULL DEFAULT '',
+      confirmed_at TEXT NOT NULL DEFAULT '',
+      UNIQUE(project_id, log_date),
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    -- Sprint 15 site attendance (factual only: shift times + man-hours, NO payroll). Linked to a
+    -- daily log — distinct from the Sprint 10 timesheet attendance_entries (which is left intact).
+    CREATE TABLE IF NOT EXISTS daily_log_attendance (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      daily_log_id INTEGER NOT NULL,
+      employee_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Present',
+      start_time TEXT NOT NULL DEFAULT '',
+      end_time TEXT NOT NULL DEFAULT '',
+      worked_hours REAL NOT NULL DEFAULT 0,
+      comment TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(daily_log_id, employee_id),
+      FOREIGN KEY(daily_log_id) REFERENCES daily_logs(id) ON DELETE CASCADE,
+      FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE RESTRICT
+    );
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint15_daily_ops");
+}
+
+// Site photos gain a "include in the daily report" flag, an optional zone, and an optional issue
+// relation (a photo may reference a Defect/Task without BECOMING one). project_photos already
+// carries private storage + author + report_id from earlier sprints.
+if (!photoColumns.has("include_in_daily")) db.exec("ALTER TABLE project_photos ADD COLUMN include_in_daily INTEGER NOT NULL DEFAULT 1");
+if (!photoColumns.has("issue_id")) db.exec("ALTER TABLE project_photos ADD COLUMN issue_id INTEGER REFERENCES issues(id) ON DELETE SET NULL");
+if (!photoColumns.has("installation_zone_id")) db.exec("ALTER TABLE project_photos ADD COLUMN installation_zone_id INTEGER REFERENCES installation_zones(id) ON DELETE SET NULL");
+
+// Sprint 15 Fix Pack — a Material Delivery can list the actual materials it carries as line
+// items (name + quantity + unit + optional note). This makes the existing flat `deliveries`
+// record operationally usable (what/how-much is requested) WITHOUT becoming a materials/stock
+// module: no balances, consumption, pricing or catalogue. Items are a child of `deliveries`
+// and cascade-delete with their parent; a delivery with zero items stays perfectly valid, so
+// every pre-existing delivery record keeps working untouched.
+const deliveryItems = db.prepare("SELECT 1 FROM schema_migrations WHERE name = ?").get("sprint15_delivery_items");
+if (!deliveryItems) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS delivery_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      delivery_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY(delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS delivery_items_delivery_idx ON delivery_items(delivery_id, sort_order, id);
+  `);
+  db.prepare("INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)").run("sprint15_delivery_items");
+}

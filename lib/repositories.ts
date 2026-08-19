@@ -121,6 +121,31 @@ export function unassignProjectIssues(projectId: string, employeeId: string) { r
 export function getDelivery(id: number): Delivery | undefined { return db.prepare(`SELECT id,project_id AS projectId,delivery_date AS deliveryDate,delivery_time AS deliveryTime,supplier,load_ref AS loadRef,description,status,notes FROM deliveries WHERE id=?`).get(id) as Delivery | undefined; }
 export function saveDelivery(input: Omit<Delivery,"id"> & {id?:number}) { return input.id ? db.prepare(`UPDATE deliveries SET delivery_date=?,delivery_time=?,supplier=?,load_ref=?,description=?,status=?,notes=? WHERE id=? AND project_id=?`).run(input.deliveryDate,input.deliveryTime,input.supplier,input.loadRef,input.description,input.status,input.notes,input.id,input.projectId) : db.prepare(`INSERT INTO deliveries (project_id,delivery_date,delivery_time,supplier,load_ref,description,status,notes) VALUES (?,?,?,?,?,?,?,?)`).run(input.projectId,input.deliveryDate,input.deliveryTime,input.supplier,input.loadRef,input.description,input.status,input.notes); }
 export function deleteDelivery(id: number, projectId: string) { return db.prepare(`DELETE FROM deliveries WHERE id=? AND project_id=?`).run(id,projectId); }
+// ---- Sprint 15 Fix Pack: Material Delivery line items ----
+// The actual materials + quantities a delivery carries. A child of `deliveries` (cascade-delete);
+// a delivery with zero items is valid, so legacy delivery records keep working untouched.
+export type DeliveryItem = { id: number; deliveryId: number; name: string; quantity: number; unit: string; note: string; sortOrder: number };
+// node:sqlite rows are NULL-prototype objects; React Server Components refuse to serialise those
+// across the client boundary. Delivery items are handed to the client-side line-item editor, so
+// return genuine plain objects (spread rebuilds them on Object.prototype).
+const toDeliveryItem = (row: DeliveryItem): DeliveryItem => ({ ...row });
+export function listDeliveryItems(deliveryId: number): DeliveryItem[] {
+  return (db.prepare(`SELECT id,delivery_id AS deliveryId,name,quantity,unit,note,sort_order AS sortOrder FROM delivery_items WHERE delivery_id=? ORDER BY sort_order,id`).all(deliveryId) as unknown as DeliveryItem[]).map(toDeliveryItem);
+}
+// All items for a project's deliveries, grouped by delivery id — avoids an N+1 on the overview.
+export function listDeliveryItemsByProject(projectId: string): Map<number, DeliveryItem[]> {
+  const rows = db.prepare(`SELECT di.id,di.delivery_id AS deliveryId,di.name,di.quantity,di.unit,di.note,di.sort_order AS sortOrder FROM delivery_items di JOIN deliveries d ON d.id=di.delivery_id WHERE d.project_id=? ORDER BY di.delivery_id,di.sort_order,di.id`).all(projectId) as unknown as DeliveryItem[];
+  const map = new Map<number, DeliveryItem[]>();
+  for (const row of rows) { const list = map.get(row.deliveryId) ?? []; list.push(toDeliveryItem(row)); map.set(row.deliveryId, list); }
+  return map;
+}
+// Replace a delivery's line items wholesale (the form submits the full current list). Must run
+// inside the caller's transaction. Rows are expected to be pre-normalised (see lib/deliveries.ts).
+export function setDeliveryItems(deliveryId: number, items: { name: string; quantity: number; unit: string; note: string }[]) {
+  db.prepare("DELETE FROM delivery_items WHERE delivery_id=?").run(deliveryId);
+  const insert = db.prepare("INSERT INTO delivery_items(delivery_id,name,quantity,unit,note,sort_order) VALUES(?,?,?,?,?,?)");
+  items.forEach((item, index) => insert.run(deliveryId, item.name, item.quantity, item.unit, item.note, index));
+}
 export function getProjectIssue(id: number): ProjectIssue | undefined { return db.prepare(`SELECT id,project_id AS projectId,created_date AS createdDate,category,title,priority,status,owner,owner_employee_id AS ownerEmployeeId,details FROM project_issues WHERE id=?`).get(id) as ProjectIssue | undefined; }
 export function saveProjectIssue(input: Omit<ProjectIssue,"id"> & {id?:number}) { return input.id ? db.prepare(`UPDATE project_issues SET created_date=?,category=?,title=?,priority=?,status=?,owner=?,owner_employee_id=?,details=? WHERE id=? AND project_id=?`).run(input.createdDate,input.category,input.title,input.priority,input.status,input.owner,input.ownerEmployeeId,input.details,input.id,input.projectId) : db.prepare(`INSERT INTO project_issues (project_id,created_date,category,title,priority,status,owner,owner_employee_id,details) VALUES (?,?,?,?,?,?,?,?,?)`).run(input.projectId,input.createdDate,input.category,input.title,input.priority,input.status,input.owner,input.ownerEmployeeId,input.details); }
 export function deleteProjectIssue(id: number, projectId: string) { return db.prepare(`DELETE FROM project_issues WHERE id=? AND project_id=?`).run(id,projectId); }
